@@ -86,6 +86,14 @@
   }
   .toast.show { opacity: 1; }
   .empty { color: var(--text3); font-size: 13px; padding: 12px 0; text-align: center; }
+
+  #tab-map2.tab-content { padding: 0; }
+  .map-frame {
+    width: 100%;
+    height: calc(100vh - 76px);
+    border: none;
+    display: block;
+  }
 </style>
 </head>
 <body>
@@ -143,9 +151,14 @@
   </div>
 </div>
 
+<div id="tab-map2" class="tab-content">
+  <iframe class="map-frame" src="https://gjdnddd.github.io/react-workflow-map/" title="워크플로우 맵" loading="lazy"></iframe>
+</div>
+
 <div class="tabbar">
   <button class="active" data-tab="home" onclick="switchTab('home')">홈</button>
   <button data-tab="map" onclick="switchTab('map')">자료지도</button>
+  <button data-tab="map2" onclick="switchTab('map2')">맵</button>
 </div>
 
 <div class="toast" id="toast"></div>
