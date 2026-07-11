@@ -131,6 +131,19 @@
   .goal-form-row select { flex: 0 0 90px; }
   .goal-form-row input.goal-title-input { flex: 1; }
   .goal-form-row input.goal-num-input { flex: 1; min-width: 0; }
+
+  .todo-row {
+    display: flex; align-items: center; gap: 8px; padding: 6px 0; font-size: 13px; color: var(--text1);
+  }
+  .todo-grade {
+    flex-shrink: 0; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 999px;
+    background: var(--bg3); color: var(--text2);
+  }
+  .todo-sub-title { font-size: 11px; color: var(--text3); margin-top: 10px; }
+  .todo-sub-title:first-child { margin-top: 0; }
+
+  .home-goal-row { padding: 8px 0; border-bottom: 1px solid var(--border1); }
+  .home-goal-row:last-child { border-bottom: none; }
 </style>
 </head>
 <body>
@@ -147,6 +160,16 @@
       <a href="https://gjdnddd.github.io/todo-app/" target="_blank">할 일</a>
       <a href="https://gjdnddd.github.io/control-tower/" target="_blank">컨트롤타워</a>
     </div>
+  </div>
+
+  <div class="card">
+    <h2>오늘 할일 · 중요</h2>
+    <div id="home-todo"><div class="empty">불러오는 중...</div></div>
+  </div>
+
+  <div class="card">
+    <h2>이번 달·주 목표</h2>
+    <div id="home-goals"></div>
   </div>
 
   <div class="card">
@@ -239,6 +262,10 @@ const GIST_FILENAME = 'hq_scan_result.json';
 const GOALS_FILENAME = 'hq_goals.json';
 const DEFAULT_GIST_ID = 'adff7f6a437517b81a7186f3bce352c8';
 const PERIOD_LABELS = { year: '연간', quarter: '분기', month: '월', week: '주' };
+
+// 봇 차단용 저민감도 키 (todo-app index.html에도 동일하게 하드코딩되어 있음 — 처리지침 문서 참고)
+const TODO_READ_URL = 'https://asia-northeast3-infin-stock-bot.cloudfunctions.net/todo-inbox-read';
+const TODO_API_KEY = 'tZrCvMfEa16iuQdFcnmGyDASHk9l5h3q0oK2xTbLY4wVWpjR';
 
 let state = {
   gistToken: '',
@@ -352,6 +379,51 @@ function saveGistConfig() {
 }
 
 // ══════════════════════════════════════════════
+//  할일 위젯 (읽기 전용 — 관리는 todo-app에서)
+// ══════════════════════════════════════════════
+async function fetchTodoWidget() {
+  const el = document.getElementById('home-todo');
+  try {
+    const res = await fetch(TODO_READ_URL, { headers: { 'X-API-Key': TODO_API_KEY } });
+    if (!res.ok) throw new Error(res.status);
+    const data = await res.json();
+    renderHomeTodo(data.items || []);
+  } catch (e) {
+    el.innerHTML = '<div class="empty">할일 불러오기 실패</div>';
+  }
+}
+
+function renderHomeTodo(items) {
+  const el = document.getElementById('home-todo');
+  const today = new Date().toISOString().slice(0, 10);
+  const active = items.filter(it => it.status === 'active');
+
+  const todayList = active.filter(it => it.deadline_type === 'exact' && it.deadline_value === today);
+  const importantList = active.filter(it => it.important);
+
+  if (!todayList.length && !importantList.length) {
+    el.innerHTML = '<div class="empty">오늘·중요 할일이 없어요</div>';
+    return;
+  }
+
+  const gradeOrder = { S: 0, A: 1, B: 2, C: 3 };
+  importantList.sort((a, b) => (gradeOrder[a.grade] ?? 9) - (gradeOrder[b.grade] ?? 9));
+
+  let html = '';
+  if (todayList.length) {
+    html += '<div class="todo-sub-title">오늘</div>' + todayList.map(it =>
+      `<div class="todo-row">${escapeHtml(it.text)}</div>`
+    ).join('');
+  }
+  if (importantList.length) {
+    html += '<div class="todo-sub-title">중요</div>' + importantList.map(it =>
+      `<div class="todo-row">${it.grade ? `<span class="todo-grade">${escapeHtml(it.grade)}</span>` : ''}${escapeHtml(it.text)}</div>`
+    ).join('');
+  }
+  el.innerHTML = html;
+}
+
+// ══════════════════════════════════════════════
 //  자료지도 렌더링
 // ══════════════════════════════════════════════
 function renderAll() {
@@ -360,6 +432,7 @@ function renderAll() {
   renderHomeSummary();
   renderSearch(document.getElementById('search-input').value);
   renderGoals();
+  renderHomeGoals();
 }
 
 function renderPinned() {
@@ -596,6 +669,30 @@ function renderGoals() {
     .join('');
 }
 
+function renderHomeGoals() {
+  const el = document.getElementById('home-goals');
+  const goals = state.goalsData.goals || [];
+  const curMonth = defaultPeriodLabel('month');
+  const curWeek = defaultPeriodLabel('week');
+  const relevant = goals.filter(g =>
+    (g.period_type === 'month' && g.period_label === curMonth) ||
+    (g.period_type === 'week' && g.period_label === curWeek)
+  );
+
+  if (!relevant.length) {
+    el.innerHTML = '<div class="empty">이번 달·주 목표가 없어요</div>';
+    return;
+  }
+
+  el.innerHTML = relevant.map(g => {
+    const hasTarget = g.target !== null && g.target !== undefined && g.target !== '' && !Number.isNaN(Number(g.target));
+    const status = hasTarget
+      ? `${g.current}${escapeHtml(g.unit || '')}/${g.target}${escapeHtml(g.unit || '')}`
+      : (g.done ? '✅ 완료' : '⬜ 진행중');
+    return `<div class="home-goal-row">${escapeHtml(g.title)} <span class="goal-period">${PERIOD_LABELS[g.period_type] || ''} · ${status}</span></div>`;
+  }).join('');
+}
+
 function goalItemHtml(g) {
   const hasTarget = g.target !== null && g.target !== undefined && g.target !== '' && !Number.isNaN(Number(g.target));
   const progressHtml = hasTarget
@@ -635,6 +732,7 @@ renderAll();
 if (!state.mapData.items || !state.mapData.items.length) {
   syncGist();
 }
+fetchTodoWidget();
 </script>
 
 </body>
