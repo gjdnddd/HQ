@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>HQ</title>
+<style>
+  :root {
+    --bg1: #0f1115; --bg2: #171a21; --bg3: #1f232c;
+    --text1: #f2f3f5; --text2: #b8bcc4; --text3: #7c8190;
+    --border1: rgba(255,255,255,0.08); --border2: rgba(255,255,255,0.12);
+    --blue: #4f8cff; --radius: 12px; --radius-sm: 8px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg1); color: var(--text1);
+    font-family: -apple-system, "Segoe UI", "Malgun Gothic", sans-serif;
+    padding-bottom: 72px;
+  }
+  header {
+    padding: 20px 16px 12px; position: sticky; top: 0; background: var(--bg1); z-index: 10;
+  }
+  header h1 { font-size: 20px; margin: 0 0 2px; }
+  header .updated { font-size: 12px; color: var(--text3); }
+
+  .tabbar {
+    position: fixed; bottom: 0; left: 0; right: 0; display: flex;
+    background: var(--bg2); border-top: 1px solid var(--border1); z-index: 20;
+  }
+  .tabbar button {
+    flex: 1; padding: 14px 0; background: none; border: none; color: var(--text3);
+    font-size: 13px; cursor: pointer;
+  }
+  .tabbar button.active { color: var(--blue); font-weight: 600; }
+
+  .tab-content { display: none; padding: 0 16px; }
+  .tab-content.active { display: block; }
+
+  .card {
+    background: var(--bg2); border: 1px solid var(--border1); border-radius: var(--radius);
+    padding: 16px; margin-bottom: 12px;
+  }
+  .card h2 { font-size: 15px; margin: 0 0 12px; color: var(--text2); }
+
+  .quick-nav { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .quick-nav a {
+    display: block; background: var(--bg3); border-radius: var(--radius-sm);
+    padding: 12px; color: var(--text1); text-decoration: none; font-size: 13px; text-align: center;
+  }
+
+  .summary-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .summary-pill {
+    background: var(--bg3); border-radius: 999px; padding: 6px 12px; font-size: 12px; color: var(--text2);
+  }
+  .summary-pill b { color: var(--text1); }
+
+  .search-box {
+    display: flex; gap: 8px; margin-bottom: 12px;
+  }
+  .search-box input {
+    flex: 1; padding: 10px 12px; background: var(--bg3); border: 1px solid var(--border2);
+    border-radius: var(--radius-sm); color: var(--text1); font-size: 14px; outline: none;
+  }
+
+  .result-item {
+    padding: 10px 4px; border-bottom: 1px solid var(--border1); font-size: 13px;
+  }
+  .result-item:last-child { border-bottom: none; }
+  .result-item .name { color: var(--text1); }
+  .result-item .meta { color: var(--text3); font-size: 11px; margin-top: 2px; }
+  .result-item a { color: var(--blue); text-decoration: none; }
+
+  .gist-section input {
+    width: 100%; padding: 10px 12px; background: var(--bg3); border: 1px solid var(--border2);
+    border-radius: var(--radius-sm); color: var(--text1); font-size: 13px; outline: none; margin-bottom: 8px;
+  }
+  .gist-section button, .btn {
+    padding: 10px 16px; background: var(--blue); border: none; border-radius: var(--radius-sm);
+    color: #fff; font-size: 13px; font-weight: 600; cursor: pointer;
+  }
+  .form-label { font-size: 12px; color: var(--text3); margin-bottom: 4px; display: block; }
+  .toast {
+    position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
+    background: var(--bg3); border: 1px solid var(--border2); border-radius: var(--radius-sm);
+    padding: 10px 16px; font-size: 13px; opacity: 0; transition: opacity 0.2s; pointer-events: none;
+  }
+  .toast.show { opacity: 1; }
+  .empty { color: var(--text3); font-size: 13px; padding: 12px 0; text-align: center; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>HQ</h1>
+  <div class="updated" id="updated-label">자료지도 불러오는 중...</div>
+</header>
+
+<div id="tab-home" class="tab-content active">
+  <div class="card">
+    <h2>빠른 이동</h2>
+    <div class="quick-nav">
+      <a href="https://gjdnddd.github.io/todo-app/" target="_blank">할 일</a>
+      <a href="https://gjdnddd.github.io/control-tower/" target="_blank">컨트롤타워</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>자료지도 요약</h2>
+    <div class="summary-row" id="home-summary">
+      <span class="summary-pill">불러오는 중...</span>
+    </div>
+  </div>
+</div>
+
+<div id="tab-map" class="tab-content">
+  <div class="card">
+    <h2>자료지도 검색</h2>
+    <div class="search-box">
+      <input type="text" id="search-input" placeholder="키워드로 검색 (예: 세금, 컨트롤타워)" />
+    </div>
+    <div id="search-results"></div>
+  </div>
+
+  <div class="card">
+    <h2>자료 수동 등록</h2>
+    <label class="form-label">이름</label>
+    <input type="text" id="manual-name" placeholder="예: 2026 연말정산 자료" style="width:100%;padding:10px 12px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;color:var(--text1);font-size:13px;margin-bottom:8px;" />
+    <label class="form-label">경로 또는 URL</label>
+    <input type="text" id="manual-path" placeholder="폴더 경로 또는 웹 URL" style="width:100%;padding:10px 12px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;color:var(--text1);font-size:13px;margin-bottom:8px;" />
+    <label class="form-label">키워드 (쉼표로 구분)</label>
+    <input type="text" id="manual-keywords" placeholder="세금, 연말정산" style="width:100%;padding:10px 12px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;color:var(--text1);font-size:13px;margin-bottom:8px;" />
+    <button class="btn" onclick="addManualItem()">추가 후 Gist에 저장</button>
+  </div>
+
+  <div class="card gist-section">
+    <h2>Gist 연동</h2>
+    <label class="form-label">Personal Access Token</label>
+    <input type="password" id="token-input" placeholder="ghp_xxxxxxxxxxxx" />
+    <label class="form-label">Gist ID</label>
+    <input type="text" id="gist-id-input" placeholder="adff7f6a437517b81a7186f3bce352c8" />
+    <button onclick="saveGistConfig()">설정 저장</button>
+    <button onclick="syncGist()" style="margin-left:8px;background:var(--bg3);color:var(--text1);">지금 불러오기</button>
+  </div>
+</div>
+
+<div class="tabbar">
+  <button class="active" data-tab="home" onclick="switchTab('home')">홈</button>
+  <button data-tab="map" onclick="switchTab('map')">자료지도</button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const GIST_FILENAME = 'hq_scan_result.json';
+const DEFAULT_GIST_ID = 'adff7f6a437517b81a7186f3bce352c8';
+
+let state = {
+  gistToken: '',
+  gistId: DEFAULT_GIST_ID,
+  mapData: { updated_at: null, items: [] },
+};
+
+function loadLocal() {
+  const raw = localStorage.getItem('hq_state');
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      state = Object.assign(state, parsed);
+    } catch (e) {}
+  }
+}
+
+function saveLocal() {
+  localStorage.setItem('hq_state', JSON.stringify(state));
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2000);
+}
+
+function switchTab(name) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tabbar button').forEach(el => el.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  document.querySelector(`.tabbar button[data-tab="${name}"]`).classList.add('active');
+}
+
+// ══════════════════════════════════════════════
+//  GIST API (기존 대시보드 패턴 재사용)
+// ══════════════════════════════════════════════
+async function syncGist() {
+  const token = state.gistToken;
+  const gistId = state.gistId;
+  if (!gistId) { showToast('Gist ID를 먼저 입력해주세요'); return; }
+  try {
+    const headers = { Accept: 'application/vnd.github.v3+json' };
+    if (token) headers.Authorization = `token ${token}`;
+    const res = await fetch(`https://api.github.com/gists/${gistId}`, { headers });
+    if (!res.ok) throw new Error(res.status);
+    const data = await res.json();
+    const file = data.files[GIST_FILENAME];
+    if (file) {
+      let content = file.content;
+      if (file.truncated && file.raw_url) {
+        const rawRes = await fetch(file.raw_url);
+        if (!rawRes.ok) throw new Error(rawRes.status);
+        content = await rawRes.text();
+      }
+      state.mapData = JSON.parse(content);
+      saveLocal();
+      renderAll();
+      showToast('자료지도 불러오기 완료');
+    }
+  } catch (e) {
+    showToast('불러오기 실패: ' + e.message);
+  }
+}
+
+async function saveToGist() {
+  const token = state.gistToken;
+  const gistId = state.gistId;
+  if (!token || !gistId) { showToast('토큰과 Gist ID를 먼저 입력해주세요'); return; }
+  try {
+    const body = JSON.stringify({
+      files: { [GIST_FILENAME]: { content: JSON.stringify(state.mapData, null, 2) } }
+    });
+    const res = await fetch(`https://api.github.com/gists/${gistId}`, {
+      method: 'PATCH',
+      headers: { Authorization: `token ${token}`, 'Content-Type': 'application/json' },
+      body
+    });
+    if (!res.ok) throw new Error(res.status);
+    saveLocal();
+    showToast('Gist에 저장 완료');
+  } catch (e) {
+    showToast('Gist 저장 실패 — 토큰 확인');
+  }
+}
+
+function saveGistConfig() {
+  state.gistToken = document.getElementById('token-input').value.trim();
+  state.gistId = document.getElementById('gist-id-input').value.trim() || DEFAULT_GIST_ID;
+  saveLocal();
+  showToast('설정 저장 완료');
+}
+
+// ══════════════════════════════════════════════
+//  자료지도 렌더링
+// ══════════════════════════════════════════════
+function renderAll() {
+  renderUpdatedLabel();
+  renderHomeSummary();
+  renderSearch(document.getElementById('search-input').value);
+}
+
+function renderUpdatedLabel() {
+  const label = document.getElementById('updated-label');
+  const items = state.mapData.items || [];
+  if (!items.length) {
+    label.textContent = '자료지도가 비어 있어요. Gist 연동에서 불러오세요.';
+    return;
+  }
+  const dt = state.mapData.updated_at ? new Date(state.mapData.updated_at) : null;
+  label.textContent = `자료 ${items.length}건` + (dt ? ` · ${dt.toLocaleDateString('ko-KR')} 기준` : '');
+}
+
+function renderHomeSummary() {
+  const items = state.mapData.items || [];
+  const el = document.getElementById('home-summary');
+  if (!items.length) {
+    el.innerHTML = '<span class="summary-pill">자료지도 없음</span>';
+    return;
+  }
+  const byCategory = {};
+  items.forEach(it => {
+    const cat = (it.category || '기타').split('/')[0];
+    byCategory[cat] = (byCategory[cat] || 0) + 1;
+  });
+  el.innerHTML = Object.entries(byCategory)
+    .sort((a, b) => b[1] - a[1])
+    .map(([cat, n]) => `<span class="summary-pill">${escapeHtml(cat)} <b>${n}</b></span>`)
+    .join('');
+}
+
+function renderSearch(query) {
+  const resultsEl = document.getElementById('search-results');
+  const items = state.mapData.items || [];
+  const q = (query || '').trim().toLowerCase();
+
+  if (!q) {
+    resultsEl.innerHTML = '<div class="empty">검색어를 입력하세요</div>';
+    return;
+  }
+
+  const matched = items.filter(it => {
+    const haystack = [it.name, it.category, ...(it.keywords || [])].join(' ').toLowerCase();
+    return haystack.includes(q);
+  }).slice(0, 100);
+
+  if (!matched.length) {
+    resultsEl.innerHTML = '<div class="empty">검색 결과가 없어요</div>';
+    return;
+  }
+
+  resultsEl.innerHTML = matched.map(it => {
+    const isUrl = /^https?:\/\//.test(it.path_or_url || '');
+    const pathHtml = isUrl
+      ? `<a href="${escapeHtml(it.path_or_url)}" target="_blank">${escapeHtml(it.path_or_url)}</a>`
+      : escapeHtml(it.path_or_url || '');
+    return `<div class="result-item">
+      <div class="name">${escapeHtml(it.name)} <span style="color:var(--text3);font-size:11px;">[${escapeHtml(it.category || '')}]</span></div>
+      <div class="meta">${pathHtml}</div>
+    </div>`;
+  }).join('');
+}
+
+function addManualItem() {
+  const name = document.getElementById('manual-name').value.trim();
+  const path = document.getElementById('manual-path').value.trim();
+  const keywords = document.getElementById('manual-keywords').value.trim();
+  if (!name || !path) { showToast('이름과 경로를 입력해주세요'); return; }
+
+  const item = {
+    id: crypto.randomUUID(),
+    name,
+    type: /^https?:\/\//.test(path) ? 'webapp' : 'folder',
+    path_or_url: path,
+    category: '수동등록',
+    keywords: keywords.split(',').map(k => k.trim()).filter(Boolean),
+    source: 'manual',
+  };
+  state.mapData.items = state.mapData.items || [];
+  state.mapData.items.push(item);
+  state.mapData.updated_at = new Date().toISOString();
+  saveLocal();
+  renderAll();
+
+  document.getElementById('manual-name').value = '';
+  document.getElementById('manual-path').value = '';
+  document.getElementById('manual-keywords').value = '';
+
+  saveToGist();
+}
+
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[c]));
+}
+
+document.getElementById('search-input').addEventListener('input', (e) => renderSearch(e.target.value));
+
+// 초기화
+loadLocal();
+document.getElementById('token-input').value = state.gistToken || '';
+document.getElementById('gist-id-input').value = state.gistId || DEFAULT_GIST_ID;
+renderAll();
+if (!state.mapData.items || !state.mapData.items.length) {
+  syncGist();
+}
+</script>
+
+</body>
+</html>
