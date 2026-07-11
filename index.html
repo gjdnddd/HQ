@@ -69,6 +69,10 @@
   .result-item .name { color: var(--text1); }
   .result-item .meta { color: var(--text3); font-size: 11px; margin-top: 2px; }
   .result-item a { color: var(--blue); text-decoration: none; }
+  .label-edit-btn {
+    margin-top: 6px; padding: 4px 10px; background: var(--bg3); border: 1px solid var(--border2);
+    border-radius: 999px; color: var(--text2); font-size: 11px; cursor: pointer;
+  }
 
   .gist-section input {
     width: 100%; padding: 10px 12px; background: var(--bg3); border: 1px solid var(--border2);
@@ -110,6 +114,11 @@
       <a href="https://gjdnddd.github.io/todo-app/" target="_blank">할 일</a>
       <a href="https://gjdnddd.github.io/control-tower/" target="_blank">컨트롤타워</a>
     </div>
+  </div>
+
+  <div class="card">
+    <h2>자주 쓰는 자료</h2>
+    <div id="pinned-list"></div>
   </div>
 
   <div class="card">
@@ -265,8 +274,19 @@ function saveGistConfig() {
 // ══════════════════════════════════════════════
 function renderAll() {
   renderUpdatedLabel();
+  renderPinned();
   renderHomeSummary();
   renderSearch(document.getElementById('search-input').value);
+}
+
+function renderPinned() {
+  const el = document.getElementById('pinned-list');
+  const items = (state.mapData.items || []).filter(it => it.pinned);
+  if (!items.length) {
+    el.innerHTML = '<div class="empty">아직 없어요. 자료지도 검색 결과에서 ★ 라벨 수정으로 추가해보세요.</div>';
+    return;
+  }
+  el.innerHTML = items.map(it => resultItemHtml(it)).join('');
 }
 
 function renderUpdatedLabel() {
@@ -318,16 +338,40 @@ function renderSearch(query) {
     return;
   }
 
-  resultsEl.innerHTML = matched.map(it => {
-    const isUrl = /^https?:\/\//.test(it.path_or_url || '');
-    const pathHtml = isUrl
-      ? `<a href="${escapeHtml(it.path_or_url)}" target="_blank">${escapeHtml(it.path_or_url)}</a>`
-      : escapeHtml(it.path_or_url || '');
-    return `<div class="result-item">
-      <div class="name">${escapeHtml(it.name)} <span style="color:var(--text3);font-size:11px;">[${escapeHtml(it.category || '')}]</span></div>
-      <div class="meta">${pathHtml}</div>
-    </div>`;
-  }).join('');
+  resultsEl.innerHTML = matched.map(it => resultItemHtml(it)).join('');
+}
+
+function resultItemHtml(it) {
+  const isUrl = /^https?:\/\//.test(it.path_or_url || '');
+  const pathHtml = isUrl
+    ? `<a href="${escapeHtml(it.path_or_url)}" target="_blank">${escapeHtml(it.path_or_url)}</a>`
+    : escapeHtml(it.path_or_url || '');
+  const star = it.pinned ? '★' : '☆';
+  return `<div class="result-item">
+    <div class="name">${escapeHtml(it.name)} <span style="color:var(--text3);font-size:11px;">[${escapeHtml(it.category || '')}]</span></div>
+    <div class="meta">${pathHtml}</div>
+    <button class="label-edit-btn" onclick="editLabel('${it.id}')">${star} 라벨 수정</button>
+  </div>`;
+}
+
+function editLabel(id) {
+  const item = (state.mapData.items || []).find(x => x.id === id);
+  if (!item) return;
+
+  const newName = prompt('라벨(이름)', item.name);
+  if (newName === null) return;
+  const newKeywords = prompt('키워드 (쉼표로 구분)', (item.keywords || []).join(', '));
+  if (newKeywords === null) return;
+
+  item.name = newName.trim() || item.name;
+  item.keywords = newKeywords.split(',').map(k => k.trim()).filter(Boolean);
+  item.pinned = true;
+  item.source = item.source === 'scan' ? 'labeled' : item.source;
+  state.mapData.updated_at = new Date().toISOString();
+
+  saveLocal();
+  renderAll();
+  saveToGist();
 }
 
 function addManualItem() {
@@ -344,6 +388,7 @@ function addManualItem() {
     category: '수동등록',
     keywords: keywords.split(',').map(k => k.trim()).filter(Boolean),
     source: 'manual',
+    pinned: true,
   };
   state.mapData.items = state.mapData.items || [];
   state.mapData.items.push(item);
