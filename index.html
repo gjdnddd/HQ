@@ -714,6 +714,48 @@ function updateGoalCurrent(id) {
   persistGoalChange();
 }
 
+function overrideWeeklyCurrent(id) {
+  const goal = findGoal(id);
+  if (!goal) return;
+  const raw = prompt('이번주 누적 직접 수정 (덮어쓰기)', goal.weekly_current);
+  if (raw === null) return;
+  const num = Number(raw);
+  if (Number.isNaN(num)) { showToast('숫자를 입력해주세요'); return; }
+  ensureGoalBuckets(goal);
+  goal.weekly_current = goal.track_type === 'stopwatch' ? round2(num) : Math.round(num);
+  persistGoalChange();
+}
+
+function editGoal(id) {
+  const goal = findGoal(id);
+  if (!goal) return;
+
+  const newCategory = prompt('분야', goal.category || '');
+  if (newCategory === null) return;
+  const newTitle = prompt('목표 제목', goal.title);
+  if (newTitle === null) return;
+  const newTargetRaw = prompt('목표 수치 (선택, 비우면 없음)', goal.target ?? '');
+  if (newTargetRaw === null) return;
+  const newUnit = prompt('단위', goal.unit || '');
+  if (newUnit === null) return;
+
+  goal.category = newCategory.trim();
+  goal.title = newTitle.trim() || goal.title;
+  goal.target = newTargetRaw.trim() ? Number(newTargetRaw) : null;
+  goal.unit = newUnit.trim();
+
+  if (goal.track_type === 'manual') {
+    const newPeriodType = prompt('기간유형 (year/quarter/month/week)', goal.period_type || 'month');
+    if (newPeriodType !== null && ['year', 'quarter', 'month', 'week'].includes(newPeriodType.trim())) {
+      goal.period_type = newPeriodType.trim();
+    }
+    const newPeriodLabel = prompt('기간 라벨', goal.period_label || '');
+    if (newPeriodLabel !== null) goal.period_label = newPeriodLabel.trim() || goal.period_label;
+  }
+
+  persistGoalChange();
+}
+
 function toggleGoalDone(id) {
   const goal = findGoal(id);
   if (!goal) return;
@@ -875,9 +917,9 @@ function goalItemHtml(g) {
     return `<div class="goal-item">
       <div class="goal-top">
         <div><span class="goal-title">${escapeHtml(g.title)}</span></div>
-        <div class="goal-actions"><button onclick="deleteGoal('${g.id}')" title="삭제">✕</button></div>
+        <div class="goal-actions"><button onclick="editGoal('${g.id}')" title="수정">✎</button><button onclick="deleteGoal('${g.id}')" title="삭제">✕</button></div>
       </div>
-      <div class="goal-weekly-text">${weeklyText}</div>
+      <div class="goal-weekly-text" style="cursor:pointer" onclick="overrideWeeklyCurrent('${g.id}')">${weeklyText}</div>
       <div class="goal-stats-line">${statsLine}</div>
       <div class="goal-controls">${controlsHtml}</div>
     </div>`;
@@ -891,7 +933,7 @@ function goalItemHtml(g) {
   return `<div class="goal-item">
     <div class="goal-top">
       <div><span class="goal-title">${escapeHtml(g.title)}</span><span class="goal-period">${escapeHtml(g.period_label || '')}</span></div>
-      <div class="goal-actions"><button onclick="deleteGoal('${g.id}')" title="삭제">✕</button></div>
+      <div class="goal-actions"><button onclick="editGoal('${g.id}')" title="수정">✎</button><button onclick="deleteGoal('${g.id}')" title="삭제">✕</button></div>
     </div>
     ${progressHtml}
   </div>`;
