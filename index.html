@@ -730,9 +730,7 @@ document.getElementById('gist-id-input').value = state.gistId || DEFAULT_GIST_ID
 document.getElementById('goal-period-label').value = defaultPeriodLabel('month');
 state.goalsData = state.goalsData || { updated_at: null, goals: [] };
 renderAll();
-if (!state.mapData.items || !state.mapData.items.length) {
-  syncGist();
-}
+syncGist();
 fetchTodoWidget();
 </script>
 
