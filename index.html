@@ -144,6 +144,21 @@
 
   .home-goal-row { padding: 8px 0; border-bottom: 1px solid var(--border1); }
   .home-goal-row:last-child { border-bottom: none; }
+
+  .goal-weekly-text { font-size: 13px; color: var(--text1); margin-top: 6px; }
+  .goal-stats-line { font-size: 11px; color: var(--text3); margin-top: 4px; display: flex; align-items: center; gap: 6px; }
+  .goal-stats-line button {
+    background: none; border: none; color: var(--text3); font-size: 11px; text-decoration: underline; cursor: pointer; padding: 0;
+  }
+  .goal-controls { display: flex; gap: 6px; margin-top: 8px; }
+  .goal-controls button {
+    padding: 6px 12px; background: var(--bg3); border: 1px solid var(--border2); border-radius: 999px;
+    color: var(--text1); font-size: 12px; cursor: pointer;
+  }
+  .goal-controls button.running { background: var(--blue); color: #fff; border-color: var(--blue); }
+  .stopwatch-live { font-variant-numeric: tabular-nums; font-weight: 600; }
+
+  .goal-form-row.goal-form-row-wide input { flex: 1; }
 </style>
 </head>
 <body>
@@ -177,7 +192,18 @@
 <div id="tab-goals" class="tab-content">
   <div class="card">
     <h2>목표 추가</h2>
+    <div class="goal-form-row goal-form-row-wide">
+      <input type="text" id="goal-category" placeholder="분야 (예: 건강, 투자, 자기관리)" />
+    </div>
     <div class="goal-form-row">
+      <select id="goal-track-type" onchange="onTrackTypeChange()">
+        <option value="manual" selected>수동</option>
+        <option value="stopwatch">스톱워치</option>
+        <option value="counter">카운터</option>
+      </select>
+      <input type="text" id="goal-title" class="goal-title-input" placeholder="목표 제목 (예: 독서 4권)" />
+    </div>
+    <div class="goal-form-row" id="goal-period-row">
       <select id="goal-period-type">
         <option value="year">연간</option>
         <option value="quarter">분기</option>
@@ -187,11 +213,8 @@
       <input type="text" id="goal-period-label" class="goal-title-input" placeholder="예: 2026-07" />
     </div>
     <div class="goal-form-row">
-      <input type="text" id="goal-title" class="goal-title-input" placeholder="목표 제목 (예: 독서 4권)" />
-    </div>
-    <div class="goal-form-row">
       <input type="number" id="goal-target" class="goal-num-input" placeholder="목표 수치 (선택)" />
-      <input type="text" id="goal-unit" class="goal-num-input" placeholder="단위 (예: 권, 회, %)" />
+      <input type="text" id="goal-unit" class="goal-num-input" placeholder="단위 (예: 시간, 세트, 권)" />
     </div>
     <button class="btn" onclick="addGoal()">목표 추가 후 Gist에 저장</button>
   </div>
@@ -262,7 +285,6 @@
 const GIST_FILENAME = 'hq_scan_result.json';
 const GOALS_FILENAME = 'hq_goals.json';
 const DEFAULT_GIST_ID = 'adff7f6a437517b81a7186f3bce352c8';
-const PERIOD_LABELS = { year: '연간', quarter: '분기', month: '월', week: '주' };
 
 // 봇 차단용 저민감도 키 (todo-app index.html에도 동일하게 하드코딩되어 있음 — 처리지침 문서 참고)
 const TODO_READ_URL = 'https://asia-northeast3-infin-stock-bot.cloudfunctions.net/todo-inbox-read';
@@ -563,6 +585,21 @@ function addManualItem() {
 // ══════════════════════════════════════════════
 //  목표
 // ══════════════════════════════════════════════
+function round2(n) { return Math.round(n * 100) / 100; }
+
+function mondayISO(d) {
+  const date = new Date(d);
+  const day = date.getDay(); // 0=일 ... 1=월
+  const diff = day === 0 ? -6 : 1 - day;
+  date.setDate(date.getDate() + diff);
+  date.setHours(0, 0, 0, 0);
+  return date.toISOString().slice(0, 10);
+}
+
+function daysBetweenISO(a, b) {
+  return Math.round((new Date(b) - new Date(a)) / 86400000);
+}
+
 function defaultPeriodLabel(type) {
   const now = new Date();
   const y = now.getFullYear();
@@ -580,9 +617,32 @@ document.getElementById('goal-period-type').addEventListener('change', (e) => {
   document.getElementById('goal-period-label').value = defaultPeriodLabel(e.target.value);
 });
 
+function onTrackTypeChange() {
+  const isManual = document.getElementById('goal-track-type').value === 'manual';
+  document.getElementById('goal-period-row').style.display = isManual ? 'flex' : 'none';
+}
+
+// 스톱워치/카운터 목표의 주간·4주 버킷을 오늘 날짜 기준으로 리셋. 리셋 발생 시 true 반환.
+function ensureGoalBuckets(g) {
+  if (g.track_type !== 'stopwatch' && g.track_type !== 'counter') return false;
+  let changed = false;
+  const thisMonday = mondayISO(new Date());
+
+  if (g.weekly_current === undefined) { g.weekly_current = 0; g.week_start_date = thisMonday; changed = true; }
+  else if (g.week_start_date !== thisMonday) { g.weekly_current = 0; g.week_start_date = thisMonday; changed = true; }
+
+  if (g.four_week_current === undefined) { g.four_week_current = 0; g.four_week_start_date = thisMonday; changed = true; }
+  else if (daysBetweenISO(g.four_week_start_date, thisMonday) >= 28) { g.four_week_current = 0; g.four_week_start_date = thisMonday; changed = true; }
+
+  if (g.total_current === undefined) { g.total_current = 0; changed = true; }
+  if (g.running_since === undefined) { g.running_since = null; }
+
+  return changed;
+}
+
 function addGoal() {
-  const periodType = document.getElementById('goal-period-type').value;
-  const periodLabel = document.getElementById('goal-period-label').value.trim() || defaultPeriodLabel(periodType);
+  const category = document.getElementById('goal-category').value.trim();
+  const trackType = document.getElementById('goal-track-type').value;
   const title = document.getElementById('goal-title').value.trim();
   const targetRaw = document.getElementById('goal-target').value.trim();
   const unit = document.getElementById('goal-unit').value.trim();
@@ -590,21 +650,39 @@ function addGoal() {
 
   const goal = {
     id: crypto.randomUUID(),
-    period_type: periodType,
-    period_label: periodLabel,
+    category,
+    track_type: trackType,
     title,
     target: targetRaw ? Number(targetRaw) : null,
-    current: 0,
     unit,
-    done: false,
     created_at: new Date().toISOString(),
   };
+
+  if (trackType === 'manual') {
+    const periodType = document.getElementById('goal-period-type').value;
+    const periodLabel = document.getElementById('goal-period-label').value.trim() || defaultPeriodLabel(periodType);
+    goal.period_type = periodType;
+    goal.period_label = periodLabel;
+    goal.current = 0;
+    goal.done = false;
+  } else {
+    const thisMonday = mondayISO(new Date());
+    goal.weekly_current = 0;
+    goal.week_start_date = thisMonday;
+    goal.four_week_current = 0;
+    goal.four_week_start_date = thisMonday;
+    goal.total_current = 0;
+    goal.running_since = null;
+  }
+
   state.goalsData.goals = state.goalsData.goals || [];
   state.goalsData.goals.push(goal);
   state.goalsData.updated_at = new Date().toISOString();
   saveLocal();
   renderGoals();
+  renderHomeGoals();
 
+  document.getElementById('goal-category').value = '';
   document.getElementById('goal-title').value = '';
   document.getElementById('goal-target').value = '';
   document.getElementById('goal-unit').value = '';
@@ -612,8 +690,20 @@ function addGoal() {
   saveGoalsToGist();
 }
 
+function findGoal(id) {
+  return (state.goalsData.goals || []).find(g => g.id === id);
+}
+
+function persistGoalChange() {
+  state.goalsData.updated_at = new Date().toISOString();
+  saveLocal();
+  renderGoals();
+  renderHomeGoals();
+  saveGoalsToGist();
+}
+
 function updateGoalCurrent(id) {
-  const goal = (state.goalsData.goals || []).find(g => g.id === id);
+  const goal = findGoal(id);
   if (!goal) return;
   const raw = prompt(`현재 수치 (목표 ${goal.target}${goal.unit || ''})`, goal.current);
   if (raw === null) return;
@@ -621,29 +711,85 @@ function updateGoalCurrent(id) {
   if (Number.isNaN(num)) { showToast('숫자를 입력해주세요'); return; }
   goal.current = num;
   if (goal.target && num >= goal.target) goal.done = true;
-  state.goalsData.updated_at = new Date().toISOString();
-  saveLocal();
-  renderGoals();
-  saveGoalsToGist();
+  persistGoalChange();
 }
 
 function toggleGoalDone(id) {
-  const goal = (state.goalsData.goals || []).find(g => g.id === id);
+  const goal = findGoal(id);
   if (!goal) return;
   goal.done = !goal.done;
-  state.goalsData.updated_at = new Date().toISOString();
-  saveLocal();
-  renderGoals();
-  saveGoalsToGist();
+  persistGoalChange();
 }
 
 function deleteGoal(id) {
   if (!confirm('이 목표를 삭제할까요?')) return;
   state.goalsData.goals = (state.goalsData.goals || []).filter(g => g.id !== id);
-  state.goalsData.updated_at = new Date().toISOString();
+  persistGoalChange();
+}
+
+function startStopwatch(id) {
+  const goal = findGoal(id);
+  if (!goal) return;
+  ensureGoalBuckets(goal);
+  goal.running_since = Date.now();
   saveLocal();
   renderGoals();
-  saveGoalsToGist();
+}
+
+function stopStopwatch(id) {
+  const goal = findGoal(id);
+  if (!goal || !goal.running_since) return;
+  const elapsedMs = Date.now() - goal.running_since;
+  goal.running_since = null;
+  const elapsedHours = elapsedMs / 3600000;
+
+  if (elapsedHours > 5) {
+    showToast('5시간 초과로 기록하지 않았어요 — 직접 입력을 이용해주세요');
+    persistGoalChange();
+    return;
+  }
+
+  const amount = round2(elapsedHours);
+  ensureGoalBuckets(goal);
+  goal.weekly_current = round2(goal.weekly_current + amount);
+  goal.four_week_current = round2(goal.four_week_current + amount);
+  goal.total_current = round2(goal.total_current + amount);
+  persistGoalChange();
+}
+
+function incrementCounter(id) {
+  const goal = findGoal(id);
+  if (!goal) return;
+  ensureGoalBuckets(goal);
+  goal.weekly_current += 1;
+  goal.four_week_current += 1;
+  goal.total_current += 1;
+  persistGoalChange();
+}
+
+function manualAddAmount(id) {
+  const goal = findGoal(id);
+  if (!goal) return;
+  const isStopwatch = goal.track_type === 'stopwatch';
+  const raw = prompt(isStopwatch ? '추가할 시간 (시간 단위, 예: 1.5)' : '추가할 개수');
+  if (raw === null) return;
+  const num = Number(raw);
+  if (Number.isNaN(num)) { showToast('숫자를 입력해주세요'); return; }
+
+  ensureGoalBuckets(goal);
+  const amount = isStopwatch ? round2(num) : Math.round(num);
+  goal.weekly_current = round2(goal.weekly_current + amount);
+  goal.four_week_current = round2(goal.four_week_current + amount);
+  goal.total_current = round2(goal.total_current + amount);
+  persistGoalChange();
+}
+
+function resetGoalTotal(id) {
+  const goal = findGoal(id);
+  if (!goal) return;
+  if (!confirm('총 누적을 0으로 리셋할까요? (분기/반기/연간 새 시작용)')) return;
+  goal.total_current = 0;
+  persistGoalChange();
 }
 
 function renderGoals() {
@@ -654,20 +800,26 @@ function renderGoals() {
     return;
   }
 
-  const order = ['year', 'quarter', 'month', 'week'];
+  let anyReset = false;
+  goals.forEach(g => { if (ensureGoalBuckets(g)) anyReset = true; });
+  if (anyReset) { saveLocal(); saveGoalsToGist(); }
+
   const groups = {};
   goals.forEach(g => {
-    const key = g.period_type || 'month';
+    const key = g.category || '미분류';
     (groups[key] = groups[key] || []).push(g);
   });
 
-  el.innerHTML = order
-    .filter(type => groups[type] && groups[type].length)
-    .map(type => {
-      const items = groups[type].map(g => goalItemHtml(g)).join('');
-      return `<div class="goal-group-title">${PERIOD_LABELS[type] || type}</div>${items}`;
-    })
-    .join('');
+  const catNames = Object.keys(groups).sort((a, b) => {
+    if (a === '미분류') return 1;
+    if (b === '미분류') return -1;
+    return a.localeCompare(b, 'ko');
+  });
+
+  el.innerHTML = catNames.map(cat => {
+    const items = groups[cat].map(g => goalItemHtml(g)).join('');
+    return `<div class="goal-group-title">${escapeHtml(cat)}</div>${items}`;
+  }).join('');
 }
 
 function renderHomeGoals() {
@@ -676,6 +828,7 @@ function renderHomeGoals() {
   const curMonth = defaultPeriodLabel('month');
   const curWeek = defaultPeriodLabel('week');
   const relevant = goals.filter(g =>
+    g.track_type === 'stopwatch' || g.track_type === 'counter' ||
     (g.period_type === 'month' && g.period_label === curMonth) ||
     (g.period_type === 'week' && g.period_label === curWeek)
   );
@@ -686,24 +839,53 @@ function renderHomeGoals() {
   }
 
   el.innerHTML = relevant.map(g => {
-    const hasTarget = g.target !== null && g.target !== undefined && g.target !== '' && !Number.isNaN(Number(g.target));
-    const status = hasTarget
-      ? `${g.current}${escapeHtml(g.unit || '')}/${g.target}${escapeHtml(g.unit || '')}`
-      : (g.done ? '✅ 완료' : '⬜ 진행중');
-    return `<div class="home-goal-row">${escapeHtml(g.title)} <span class="goal-period">${PERIOD_LABELS[g.period_type] || ''} · ${status}</span></div>`;
+    const isAuto = g.track_type === 'stopwatch' || g.track_type === 'counter';
+    let status;
+    if (isAuto) {
+      status = `이번주 ${g.weekly_current}${escapeHtml(g.unit || '')}` + (g.target ? `/${g.target}${escapeHtml(g.unit || '')}` : '');
+    } else {
+      const hasTarget = g.target !== null && g.target !== undefined && g.target !== '' && !Number.isNaN(Number(g.target));
+      status = hasTarget
+        ? `${g.current}${escapeHtml(g.unit || '')}/${g.target}${escapeHtml(g.unit || '')}`
+        : (g.done ? '✅ 완료' : '⬜ 진행중');
+    }
+    const cat = g.category ? `${escapeHtml(g.category)} · ` : '';
+    return `<div class="home-goal-row">${escapeHtml(g.title)} <span class="goal-period">${cat}${status}</span></div>`;
   }).join('');
 }
 
 function goalItemHtml(g) {
+  if (g.track_type === 'stopwatch' || g.track_type === 'counter') {
+    const weeklyText = `이번주 ${g.weekly_current}${escapeHtml(g.unit || '')}` + (g.target ? ` / ${g.target}${escapeHtml(g.unit || '')}` : '');
+    const statsLine = `4주 누적 ${g.four_week_current}${escapeHtml(g.unit || '')} · 총 누적 ${g.total_current}${escapeHtml(g.unit || '')} <button onclick="resetGoalTotal('${g.id}')">리셋</button>`;
+
+    let controlsHtml;
+    if (g.track_type === 'stopwatch') {
+      const running = !!g.running_since;
+      controlsHtml = running
+        ? `<button class="running" onclick="stopStopwatch('${g.id}')">■ 정지 <span class="stopwatch-live" data-start="${g.running_since}">00:00</span></button>
+           <button onclick="manualAddAmount('${g.id}')">직접 입력</button>`
+        : `<button onclick="startStopwatch('${g.id}')">▶ 시작</button>
+           <button onclick="manualAddAmount('${g.id}')">직접 입력</button>`;
+    } else {
+      controlsHtml = `<button onclick="incrementCounter('${g.id}')">+1</button>
+        <button onclick="manualAddAmount('${g.id}')">직접 입력</button>`;
+    }
+
+    return `<div class="goal-item">
+      <div class="goal-top">
+        <div><span class="goal-title">${escapeHtml(g.title)}</span></div>
+        <div class="goal-actions"><button onclick="deleteGoal('${g.id}')" title="삭제">✕</button></div>
+      </div>
+      <div class="goal-weekly-text">${weeklyText}</div>
+      <div class="goal-stats-line">${statsLine}</div>
+      <div class="goal-controls">${controlsHtml}</div>
+    </div>`;
+  }
+
   const hasTarget = g.target !== null && g.target !== undefined && g.target !== '' && !Number.isNaN(Number(g.target));
   const progressHtml = hasTarget
-    ? (() => {
-        const pct = Math.max(0, Math.min(100, Math.round((g.current / g.target) * 100)));
-        return `<div class="goal-progress-wrap" onclick="updateGoalCurrent('${g.id}')">
-          <div class="goal-progress-bar"><div class="goal-progress-fill" style="width:${pct}%"></div></div>
-          <div class="goal-progress-pct">${g.current}${escapeHtml(g.unit || '')}/${g.target}${escapeHtml(g.unit || '')}</div>
-        </div>`;
-      })()
+    ? `<div class="goal-weekly-text" style="cursor:pointer" onclick="updateGoalCurrent('${g.id}')">${g.current}${escapeHtml(g.unit || '')} / ${g.target}${escapeHtml(g.unit || '')}</div>`
     : `<div class="goal-check ${g.done ? 'done' : ''}" onclick="toggleGoalDone('${g.id}')">${g.done ? '✅ 완료' : '⬜ 완료 표시'}</div>`;
 
   return `<div class="goal-item">
@@ -714,6 +896,17 @@ function goalItemHtml(g) {
     ${progressHtml}
   </div>`;
 }
+
+setInterval(() => {
+  document.querySelectorAll('.stopwatch-live').forEach(el => {
+    const start = Number(el.dataset.start);
+    if (!start) return;
+    const elapsedSec = Math.floor((Date.now() - start) / 1000);
+    const m = String(Math.floor(elapsedSec / 60)).padStart(2, '0');
+    const s = String(elapsedSec % 60).padStart(2, '0');
+    el.textContent = `${m}:${s}`;
+  });
+}, 1000);
 
 function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({
