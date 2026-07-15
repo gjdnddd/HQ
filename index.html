@@ -133,13 +133,14 @@
   .goal-form-row input.goal-num-input { flex: 1; min-width: 0; }
 
   .todo-row {
-    display: flex; align-items: center; gap: 8px; padding: 6px 0; font-size: 13px; color: var(--text1);
+    display: flex; align-items: center; gap: 6px; padding: 3px 0; font-size: 13px; color: var(--text1);
   }
+  .todo-row input[type="checkbox"] { flex-shrink: 0; width: 15px; height: 15px; accent-color: var(--blue); }
   .todo-grade {
     flex-shrink: 0; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 999px;
     background: var(--bg3); color: var(--text2);
   }
-  .todo-sub-title { font-size: 11px; color: var(--text3); margin-top: 10px; }
+  .todo-sub-title { font-size: 11px; color: var(--text3); margin-top: 6px; }
   .todo-sub-title:first-child { margin-top: 0; }
 
   .home-goal-row { padding: 8px 0; border-bottom: 1px solid var(--border1); }
@@ -170,21 +171,21 @@
 
 <div id="tab-home" class="tab-content active">
   <div class="card">
-    <h2>빠른 이동</h2>
-    <div class="quick-nav">
-      <a href="https://gjdnddd.github.io/todo-app/" target="_blank">할 일</a>
-      <a href="https://gjdnddd.github.io/control-tower/" target="_blank">컨트롤타워</a>
-    </div>
-  </div>
-
-  <div class="card">
-    <h2>오늘 할일 · 중요</h2>
+    <h2>오늘업무 · 주간업무</h2>
     <div id="home-todo"><div class="empty">불러오는 중...</div></div>
   </div>
 
   <div class="card">
     <h2>이번 달·주 목표</h2>
     <div id="home-goals"></div>
+  </div>
+
+  <div class="card">
+    <h2>빠른 이동</h2>
+    <div class="quick-nav">
+      <a href="https://gjdnddd.github.io/todo-app/" target="_blank">할 일</a>
+      <a href="https://gjdnddd.github.io/control-tower/" target="_blank">컨트롤타워</a>
+    </div>
   </div>
 
 </div>
@@ -288,6 +289,7 @@ const DEFAULT_GIST_ID = 'adff7f6a437517b81a7186f3bce352c8';
 
 // 봇 차단용 저민감도 키 (todo-app index.html에도 동일하게 하드코딩되어 있음 — 처리지침 문서 참고)
 const TODO_READ_URL = 'https://asia-northeast3-infin-stock-bot.cloudfunctions.net/todo-inbox-read';
+const TODO_WRITE_URL = 'https://asia-northeast3-infin-stock-bot.cloudfunctions.net/todo-inbox-write';
 const TODO_API_KEY = 'tZrCvMfEa16iuQdFcnmGyDASHk9l5h3q0oK2xTbLY4wVWpjR';
 
 let state = {
@@ -296,6 +298,9 @@ let state = {
   mapData: { updated_at: null, items: [] },
   goalsData: { updated_at: null, goals: [] },
 };
+
+// todo-app 원본 데이터 캐시 (완료 처리 시 전체를 다시 write해야 해서 보관)
+let todoRaw = { items: [], topics: [], recurring: [], checklist_sets: [] };
 
 function loadLocal() {
   const raw = localStorage.getItem('hq_state');
@@ -410,40 +415,70 @@ async function fetchTodoWidget() {
     const res = await fetch(TODO_READ_URL, { headers: { 'X-API-Key': TODO_API_KEY } });
     if (!res.ok) throw new Error(res.status);
     const data = await res.json();
-    renderHomeTodo(data.items || []);
+    todoRaw = {
+      items: data.items || [],
+      topics: data.topics || [],
+      recurring: data.recurring || [],
+      checklist_sets: data.checklist_sets || [],
+    };
+    renderHomeTodo();
   } catch (e) {
     el.innerHTML = '<div class="empty">할일 불러오기 실패</div>';
   }
 }
 
-function renderHomeTodo(items) {
+function renderHomeTodo() {
   const el = document.getElementById('home-todo');
-  const today = new Date().toISOString().slice(0, 10);
-  const active = items.filter(it => it.status === 'active');
+  const today = localDateStr(new Date());
+  const wid = mondayISO(new Date());
 
-  const todayList = active.filter(it => it.deadline_type === 'exact' && it.deadline_value === today);
-  const importantList = active.filter(it => it.important);
+  const todayItems = todoRaw.items.filter(i => i.pinned_today === today && i.status !== 'done');
+  const todayIds = new Set(todayItems.map(i => i.id));
+  const weekItems = todoRaw.items.filter(i => i.pinned_week === wid && i.status !== 'done' && !todayIds.has(i.id));
 
-  if (!todayList.length && !importantList.length) {
-    el.innerHTML = '<div class="empty">오늘·중요 할일이 없어요</div>';
+  if (!todayItems.length && !weekItems.length) {
+    el.innerHTML = '<div class="empty">오늘·주간 업무가 없어요 (todo-app 업무 탭에서 지정)</div>';
     return;
   }
 
-  const gradeOrder = { S: 0, A: 1, B: 2, C: 3 };
-  importantList.sort((a, b) => (gradeOrder[a.grade] ?? 9) - (gradeOrder[b.grade] ?? 9));
-
   let html = '';
-  if (todayList.length) {
-    html += '<div class="todo-sub-title">오늘</div>' + todayList.map(it =>
-      `<div class="todo-row">${escapeHtml(it.text)}</div>`
-    ).join('');
+  if (todayItems.length) {
+    html += '<div class="todo-sub-title">오늘업무</div>' + todayItems.map(i => todoRowHtml(i)).join('');
   }
-  if (importantList.length) {
-    html += '<div class="todo-sub-title">중요</div>' + importantList.map(it =>
-      `<div class="todo-row">${it.grade ? `<span class="todo-grade">${escapeHtml(it.grade)}</span>` : ''}${escapeHtml(it.text)}</div>`
-    ).join('');
+  if (weekItems.length) {
+    html += '<div class="todo-sub-title">주간업무</div>' + weekItems.map(i => todoRowHtml(i)).join('');
   }
   el.innerHTML = html;
+}
+
+function todoRowHtml(i) {
+  return `<div class="todo-row"><input type="checkbox" onclick="completeTodoItem('${i.id}')" /><span>${escapeHtml(i.text)}</span></div>`;
+}
+
+async function completeTodoItem(id) {
+  const item = todoRaw.items.find(i => i.id === id);
+  if (!item) return;
+  item.status = 'done';
+  item.completed_at = new Date().toISOString();
+  renderHomeTodo();
+
+  try {
+    const res = await fetch(TODO_WRITE_URL, {
+      method: 'POST',
+      headers: { 'X-API-Key': TODO_API_KEY, 'Content-Type': 'application/json; charset=utf-8' },
+      body: JSON.stringify({
+        items: todoRaw.items,
+        topics: todoRaw.topics,
+        recurring: todoRaw.recurring,
+        checklist_sets: todoRaw.checklist_sets,
+        deleted_ids: [], deleted_topic_ids: [], deleted_recurring_ids: [], deleted_checklist_set_ids: [],
+      }),
+    });
+    if (!res.ok) throw new Error(res.status);
+    showToast('완료 처리됨');
+  } catch (e) {
+    showToast('완료 반영 실패 — 새로고침 후 다시 시도해주세요');
+  }
 }
 
 // ══════════════════════════════════════════════
@@ -587,13 +622,17 @@ function addManualItem() {
 // ══════════════════════════════════════════════
 function round2(n) { return Math.round(n * 100) / 100; }
 
+// 로컬 타임존 기준 YYYY-MM-DD (toISOString은 UTC라서 자정 근처에 날짜가 하루 밀릴 수 있어 사용 안 함)
+function localDateStr(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 function mondayISO(d) {
   const date = new Date(d);
   const day = date.getDay(); // 0=일 ... 1=월
   const diff = day === 0 ? -6 : 1 - day;
   date.setDate(date.getDate() + diff);
-  date.setHours(0, 0, 0, 0);
-  return date.toISOString().slice(0, 10);
+  return localDateStr(date);
 }
 
 function daysBetweenISO(a, b) {
