@@ -142,6 +142,9 @@
   }
   .todo-sub-title { font-size: 11px; color: var(--text3); margin-top: 6px; }
   .todo-sub-title:first-child { margin-top: 0; }
+  .todo-note {
+    font-size: 11px; color: var(--text3); margin: 0 0 4px 21px; white-space: pre-line; line-height: 1.4;
+  }
 
   .home-goal-row { padding: 8px 0; border-bottom: 1px solid var(--border1); }
   .home-goal-row:last-child { border-bottom: none; }
@@ -554,12 +557,16 @@ function renderHomeTodo() {
   el.innerHTML = html;
 }
 
+function noteHtml(note) {
+  return note ? `<div class="todo-note">${escapeHtml(note)}</div>` : '';
+}
+
 function todoRowHtml(i) {
-  return `<div class="todo-row"><input type="checkbox" onclick="completeTodoItem('${i.id}')" /><span>${escapeHtml(i.text)}</span></div>`;
+  return `<div class="todo-row"><input type="checkbox" onclick="completeTodoItem('${i.id}')" /><span>${escapeHtml(i.text)}</span></div>${noteHtml(i.note)}`;
 }
 
 function recurringRowHtml(r) {
-  return `<div class="todo-row"><input type="checkbox" onclick="completeRecurringItem('${r.id}')" /><span>${escapeHtml(r.text)} <span class="goal-period">${escapeHtml(freqLabel(r))}</span></span></div>`;
+  return `<div class="todo-row"><input type="checkbox" onclick="completeRecurringItem('${r.id}')" /><span>${escapeHtml(r.text)} <span class="goal-period">${escapeHtml(freqLabel(r))}</span></span></div>${noteHtml(r.note)}`;
 }
 
 function checklistGroupHtml(g) {
