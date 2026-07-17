@@ -445,14 +445,88 @@ function checkResetChecklistSets() {
   });
 }
 
+// ── todo-app과 동일한 "이번 주" 범위·데드라인 판정 (오늘업무/주간업무 자동편입용) ──
+function getWeekRange() {
+  const now = new Date();
+  const day = now.getDay();
+  const diffToMonday = day === 0 ? -6 : 1 - day;
+  const monday = new Date(now); monday.setDate(now.getDate() + diffToMonday); monday.setHours(0, 0, 0, 0);
+  const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6); sunday.setHours(23, 59, 59, 999);
+  return { monday, sunday };
+}
+function isDateThisWeek(dateStr) {
+  const parts = dateStr.split('-').map(Number);
+  const target = new Date(parts[0], parts[1] - 1, parts[2], 12, 0, 0);
+  const { monday, sunday } = getWeekRange();
+  return target >= monday && target <= sunday;
+}
+
+// ── todo-app과 동일한 단일 반복업무 활성 판정 (저장된 status를 그대로 믿지 않고 매번 재계산) ──
+function lastOccurrence(dow) {
+  const d = new Date(); const diff = (d.getDay() - dow + 7) % 7;
+  d.setDate(d.getDate() - diff); d.setHours(0, 0, 0, 0); return d;
+}
+function getLastDayOfMonth(y, m) { return new Date(y, m + 1, 0).getDate(); }
+function shouldActivateRec(r) {
+  const now = new Date();
+  if (r.freq === 'daily') {
+    if (!r.last_done_at) return true;
+    return new Date(r.last_done_at).toDateString() !== now.toDateString();
+  }
+  if (r.freq === 'weekly') {
+    if (now.getDay() !== r.day_of_week) return false;
+    if (!r.last_done_at) return true;
+    return new Date(r.last_done_at) < lastOccurrence(r.day_of_week);
+  }
+  if (r.freq === 'biweekly') {
+    if (now.getDay() !== r.day_of_week) return false;
+    if (!r.last_activated_at) return true;
+    return (now - new Date(r.last_activated_at)) >= 13 * 24 * 60 * 60 * 1000;
+  }
+  if (r.freq === 'monthly') {
+    const target = r.day_of_month === 0 ? getLastDayOfMonth(now.getFullYear(), now.getMonth()) : r.day_of_month;
+    if (now.getDate() !== target) return false;
+    if (!r.last_done_at) return true;
+    const d = new Date(r.last_done_at);
+    return d.getFullYear() < now.getFullYear() || (d.getFullYear() === now.getFullYear() && d.getMonth() < now.getMonth());
+  }
+  return false;
+}
+function checkRecActivation() {
+  const nowIso = new Date().toISOString();
+  todoRaw.recurring.forEach(r => {
+    if (shouldActivateRec(r)) {
+      if (r.status !== 'active') r.activated_at = nowIso;
+      r.status = 'active';
+      if (r.freq === 'biweekly') r.last_activated_at = nowIso;
+    }
+  });
+}
+
 function renderHomeTodo() {
   const el = document.getElementById('home-todo');
   const today = localDateStr(new Date());
   const wid = mondayISO(new Date());
 
-  const todayItems = todoRaw.items.filter(i => i.pinned_today === today && i.status !== 'done');
+  const candidates = todoRaw.items.filter(i => i.deadline_type === 'exact' && i.deadline_value && i.status !== 'done');
+
+  const pinnedTodayItems = todoRaw.items.filter(i =>
+    i.pinned_today === today && i.status !== 'done' &&
+    !(i.deadline_type === 'exact' && i.deadline_value === today)
+  );
+  const todayItems = [...candidates.filter(i => i.deadline_value === today), ...pinnedTodayItems];
   const todayIds = new Set(todayItems.map(i => i.id));
-  const weekItems = todoRaw.items.filter(i => i.pinned_week === wid && i.status !== 'done' && !todayIds.has(i.id));
+
+  const pinnedWeekItems = todoRaw.items.filter(i =>
+    i.pinned_week === wid && i.status !== 'done' && !todayIds.has(i.id) &&
+    !(i.deadline_type === 'exact' && i.deadline_value && isDateThisWeek(i.deadline_value))
+  );
+  const weekItems = [
+    ...candidates.filter(i => i.deadline_value !== today && isDateThisWeek(i.deadline_value)),
+    ...pinnedWeekItems,
+  ];
+
+  checkRecActivation();
   const activeRecurring = todoRaw.recurring.filter(r => r.status === 'active');
 
   checkResetChecklistSets();
