@@ -150,10 +150,10 @@
   .home-goal-row:last-child { border-bottom: none; }
 
   .goal-weekly-text { font-size: 13px; color: var(--text1); margin-top: 6px; }
-  .goal-stats-line { font-size: 11px; color: var(--text3); margin-top: 4px; display: flex; align-items: center; gap: 6px; }
-  .goal-stats-line button {
-    background: none; border: none; color: var(--text3); font-size: 11px; text-decoration: underline; cursor: pointer; padding: 0;
-  }
+  .goal-tiers { margin-top: 6px; }
+  .goal-tier-row { display: flex; justify-content: space-between; font-size: 12px; color: var(--text2); padding: 2px 0; }
+  .goal-tier-row span:first-child { color: var(--text3); }
+  .goal-inactive-note { font-size: 12px; color: var(--text3); margin-top: 8px; }
   .goal-controls { display: flex; gap: 6px; margin-top: 8px; }
   .goal-controls button {
     padding: 6px 12px; background: var(--bg3); border: 1px solid var(--border2); border-radius: 999px;
@@ -163,13 +163,25 @@
   .stopwatch-live { font-variant-numeric: tabular-nums; font-weight: 600; }
 
   .goal-form-row.goal-form-row-wide input { flex: 1; }
+
+  .day-chip-group { display: flex; gap: 4px; flex-wrap: wrap; }
+  .day-chip {
+    padding: 6px 10px; border-radius: 999px; background: var(--bg3); border: 1px solid var(--border2);
+    color: var(--text3); font-size: 12px; cursor: pointer; user-select: none;
+  }
+  .day-chip.active { background: var(--blue); color: #fff; border-color: var(--blue); }
+  .day-preset-btn {
+    padding: 6px 10px; background: var(--bg3); border: 1px solid var(--border2); border-radius: 999px;
+    color: var(--text2); font-size: 11px; cursor: pointer;
+  }
+  #save-status { font-size: 12px; }
 </style>
 </head>
 <body>
 
 <header>
   <h1>HQ</h1>
-  <div class="updated" id="updated-label">자료지도 불러오는 중...</div>
+  <div class="updated"><span id="updated-label">자료지도 불러오는 중...</span><span id="save-status"></span></div>
 </header>
 
 <div id="tab-home" class="tab-content active">
@@ -216,8 +228,16 @@
       </select>
       <input type="text" id="goal-period-label" class="goal-title-input" placeholder="예: 2026-07" />
     </div>
+    <div class="goal-form-row" id="goal-days-row" style="display:none; flex-direction:column; align-items:flex-start; gap:6px;">
+      <div style="display:flex; gap:6px;">
+        <button type="button" class="day-preset-btn" onclick="setActiveDaysPreset('all')">전체</button>
+        <button type="button" class="day-preset-btn" onclick="setActiveDaysPreset('weekday')">평일만</button>
+        <button type="button" class="day-preset-btn" onclick="setActiveDaysPreset('weekend')">주말만</button>
+      </div>
+      <div class="day-chip-group" id="goal-days-chips"></div>
+    </div>
     <div class="goal-form-row">
-      <input type="number" id="goal-target" class="goal-num-input" placeholder="목표 수치 (선택)" />
+      <input type="number" id="goal-target" class="goal-num-input" placeholder="목표 수치 (하루 기준, 선택)" />
       <input type="text" id="goal-unit" class="goal-num-input" placeholder="단위 (예: 시간, 세트, 권)" />
     </div>
     <button class="btn" onclick="addGoal()">목표 추가 후 Gist에 저장</button>
@@ -326,6 +346,15 @@ function showToast(msg) {
   setTimeout(() => t.classList.remove('show'), 2000);
 }
 
+// 헤더 상단에 상시 노출되는 마지막 저장 상태 (토스트는 금방 사라져서 보조 수단으로 유지)
+function updateSaveStatus(success) {
+  const el = document.getElementById('save-status');
+  if (!el) return;
+  const time = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+  el.textContent = success ? ` · 마지막 저장 ${time} ✓` : ' · 저장 실패 ⚠';
+  el.style.color = success ? '' : '#ff6b6b';
+}
+
 function switchTab(name) {
   document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.tabbar button').forEach(el => el.classList.remove('active'));
@@ -353,9 +382,11 @@ async function syncGist() {
     const goalsContent = await readGistFile(data, GOALS_FILENAME);
     if (goalsContent) state.goalsData = JSON.parse(goalsContent);
 
+    const migrated = migrateGoalsIfNeeded();
     saveLocal();
     renderAll();
     showToast('불러오기 완료');
+    if (migrated) saveGoalsToGist();
   } catch (e) {
     showToast('불러오기 실패: ' + e.message);
   }
@@ -389,8 +420,10 @@ async function saveFileToGist(filename, dataObj, successMsg) {
     if (!res.ok) throw new Error(res.status);
     saveLocal();
     showToast(successMsg || 'Gist에 저장 완료');
+    updateSaveStatus(true);
   } catch (e) {
     showToast('Gist 저장 실패 — 토큰 확인');
+    updateSaveStatus(false);
   }
 }
 
@@ -591,8 +624,10 @@ async function writeTodoBack(successMsg) {
     });
     if (!res.ok) throw new Error(res.status);
     showToast(successMsg || '완료 처리됨');
+    updateSaveStatus(true);
   } catch (e) {
     showToast('완료 반영 실패 — 새로고침 후 다시 시도해주세요');
+    updateSaveStatus(false);
   }
 }
 
@@ -777,10 +812,6 @@ function mondayISO(d) {
   return localDateStr(date);
 }
 
-function daysBetweenISO(a, b) {
-  return Math.round((new Date(b) - new Date(a)) / 86400000);
-}
-
 function defaultPeriodLabel(type) {
   const now = new Date();
   const y = now.getFullYear();
@@ -801,24 +832,98 @@ document.getElementById('goal-period-type').addEventListener('change', (e) => {
 function onTrackTypeChange() {
   const isManual = document.getElementById('goal-track-type').value === 'manual';
   document.getElementById('goal-period-row').style.display = isManual ? 'flex' : 'none';
+  document.getElementById('goal-days-row').style.display = isManual ? 'none' : 'flex';
 }
 
-// 스톱워치/카운터 목표의 주간·4주 버킷을 오늘 날짜 기준으로 리셋. 리셋 발생 시 true 반환.
-function ensureGoalBuckets(g) {
-  if (g.track_type !== 'stopwatch' && g.track_type !== 'counter') return false;
-  let changed = false;
-  const thisMonday = mondayISO(new Date());
+// ── 요일 선택 칩 ──
+const DAY_CHIP_LABELS = ['일', '월', '화', '수', '목', '금', '토'];
+function renderDayChips() {
+  document.getElementById('goal-days-chips').innerHTML = DAY_CHIP_LABELS
+    .map((label, i) => `<span class="day-chip active" data-day="${i}" onclick="toggleDayChip(this)">${label}</span>`)
+    .join('');
+}
+function toggleDayChip(el) { el.classList.toggle('active'); }
+function setActiveDaysPreset(preset) {
+  document.querySelectorAll('#goal-days-chips .day-chip').forEach(chip => {
+    const day = Number(chip.dataset.day);
+    let active = true;
+    if (preset === 'weekday') active = day >= 1 && day <= 5;
+    else if (preset === 'weekend') active = day === 0 || day === 6;
+    chip.classList.toggle('active', active);
+  });
+}
+function getSelectedActiveDays() {
+  return Array.from(document.querySelectorAll('#goal-days-chips .day-chip.active')).map(chip => Number(chip.dataset.day));
+}
 
-  if (g.weekly_current === undefined) { g.weekly_current = 0; g.week_start_date = thisMonday; changed = true; }
-  else if (g.week_start_date !== thisMonday) { g.weekly_current = 0; g.week_start_date = thisMonday; changed = true; }
+// ── 스톱워치/카운터 목표: 활성 요일·일별 로그 기반 집계 ──
+function isActiveToday(g) {
+  const days = g.active_days && g.active_days.length ? g.active_days : [0, 1, 2, 3, 4, 5, 6];
+  return days.includes(new Date().getDay());
+}
 
-  if (g.four_week_current === undefined) { g.four_week_current = 0; g.four_week_start_date = thisMonday; changed = true; }
-  else if (daysBetweenISO(g.four_week_start_date, thisMonday) >= 28) { g.four_week_current = 0; g.four_week_start_date = thisMonday; changed = true; }
+function addLogAmount(g, amount) {
+  const today = localDateStr(new Date());
+  g.daily_log = g.daily_log || [];
+  const entry = g.daily_log.find(e => e.date === today);
+  if (entry) entry.amount = round2(entry.amount + amount);
+  else g.daily_log.push({ date: today, amount: round2(amount) });
+}
 
-  if (g.total_current === undefined) { g.total_current = 0; changed = true; }
-  if (g.running_since === undefined) { g.running_since = null; }
+function sumLogInRange(g, startStr, endStr) {
+  return round2((g.daily_log || []).filter(e => e.date >= startStr && e.date <= endStr).reduce((s, e) => s + e.amount, 0));
+}
 
-  return changed;
+function countActiveDaysInRange(g, start, end) {
+  const days = g.active_days && g.active_days.length ? g.active_days : [0, 1, 2, 3, 4, 5, 6];
+  let count = 0;
+  const cur = new Date(start);
+  while (cur <= end) {
+    if (days.includes(cur.getDay())) count++;
+    cur.setDate(cur.getDate() + 1);
+  }
+  return count;
+}
+
+function startOfMonth(d) { return new Date(d.getFullYear(), d.getMonth(), 1); }
+function endOfMonth(d) { return new Date(d.getFullYear(), d.getMonth() + 1, 0); }
+function quarterStartMonth(m) { return Math.floor(m / 3) * 3; }
+function startOfQuarter(d) { return new Date(d.getFullYear(), quarterStartMonth(d.getMonth()), 1); }
+function endOfQuarter(d) { return new Date(d.getFullYear(), quarterStartMonth(d.getMonth()) + 3, 0); }
+function startOfHalf(d) { return new Date(d.getFullYear(), d.getMonth() < 6 ? 0 : 6, 1); }
+function endOfHalf(d) { return new Date(d.getFullYear(), d.getMonth() < 6 ? 6 : 12, 0); }
+
+// 목표의 일/주/월/분기/반기 누적치·기대치(하루 목표치 × 기간 내 활성요일 수)를 계산
+function goalTiers(g) {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const { monday, sunday } = getWeekRange();
+  const weekStart = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate());
+  const weekEnd = new Date(sunday.getFullYear(), sunday.getMonth(), sunday.getDate());
+
+  const ranges = [
+    { key: 'day', label: '오늘', start: today, end: today },
+    { key: 'week', label: '이번주', start: weekStart, end: weekEnd },
+    { key: 'month', label: '이번달', start: startOfMonth(now), end: endOfMonth(now) },
+    { key: 'quarter', label: '분기', start: startOfQuarter(now), end: endOfQuarter(now) },
+    { key: 'half', label: '반기', start: startOfHalf(now), end: endOfHalf(now) },
+  ];
+
+  return ranges.map(r => {
+    const startStr = localDateStr(r.start), endStr = localDateStr(r.end);
+    const current = sumLogInRange(g, startStr, endStr);
+    const activeDayCount = countActiveDaysInRange(g, r.start, r.end);
+    const expected = g.target ? round2(g.target * activeDayCount) : null;
+    return { key: r.key, label: r.label, current, expected };
+  });
+}
+
+// 신규 목표 구조로 전환되며 기존 목표(수동+스톱워치+카운터)는 전체 삭제 — Gist에 1회만 반영
+function migrateGoalsIfNeeded() {
+  if (state.goalsData.migrated_v2) return false;
+  state.goalsData.goals = [];
+  state.goalsData.migrated_v2 = true;
+  return true;
 }
 
 function addGoal() {
@@ -847,12 +952,9 @@ function addGoal() {
     goal.current = 0;
     goal.done = false;
   } else {
-    const thisMonday = mondayISO(new Date());
-    goal.weekly_current = 0;
-    goal.week_start_date = thisMonday;
-    goal.four_week_current = 0;
-    goal.four_week_start_date = thisMonday;
-    goal.total_current = 0;
+    goal.active_days = getSelectedActiveDays();
+    if (!goal.active_days.length) goal.active_days = [0, 1, 2, 3, 4, 5, 6];
+    goal.daily_log = [];
     goal.running_since = null;
   }
 
@@ -867,6 +969,7 @@ function addGoal() {
   document.getElementById('goal-title').value = '';
   document.getElementById('goal-target').value = '';
   document.getElementById('goal-unit').value = '';
+  setActiveDaysPreset('all');
 
   saveGoalsToGist();
 }
@@ -895,18 +998,6 @@ function updateGoalCurrent(id) {
   persistGoalChange();
 }
 
-function overrideWeeklyCurrent(id) {
-  const goal = findGoal(id);
-  if (!goal) return;
-  const raw = prompt('이번주 누적 직접 수정 (덮어쓰기)', goal.weekly_current);
-  if (raw === null) return;
-  const num = Number(raw);
-  if (Number.isNaN(num)) { showToast('숫자를 입력해주세요'); return; }
-  ensureGoalBuckets(goal);
-  goal.weekly_current = goal.track_type === 'stopwatch' ? round2(num) : Math.round(num);
-  persistGoalChange();
-}
-
 function editGoal(id) {
   const goal = findGoal(id);
   if (!goal) return;
@@ -932,6 +1023,12 @@ function editGoal(id) {
     }
     const newPeriodLabel = prompt('기간 라벨', goal.period_label || '');
     if (newPeriodLabel !== null) goal.period_label = newPeriodLabel.trim() || goal.period_label;
+  } else {
+    const daysRaw = prompt('활성 요일 (0=일 1=월 2=화 3=수 4=목 5=금 6=토, 쉼표로 구분)', (goal.active_days || []).join(','));
+    if (daysRaw !== null) {
+      const parsed = daysRaw.split(',').map(s => Number(s.trim())).filter(n => !Number.isNaN(n) && n >= 0 && n <= 6);
+      if (parsed.length) goal.active_days = parsed;
+    }
   }
 
   persistGoalChange();
@@ -952,8 +1049,7 @@ function deleteGoal(id) {
 
 function startStopwatch(id) {
   const goal = findGoal(id);
-  if (!goal) return;
-  ensureGoalBuckets(goal);
+  if (!goal || !isActiveToday(goal)) return;
   goal.running_since = Date.now();
   saveLocal();
   renderGoals();
@@ -972,46 +1068,27 @@ function stopStopwatch(id) {
     return;
   }
 
-  const amount = round2(elapsedHours);
-  ensureGoalBuckets(goal);
-  goal.weekly_current = round2(goal.weekly_current + amount);
-  goal.four_week_current = round2(goal.four_week_current + amount);
-  goal.total_current = round2(goal.total_current + amount);
+  addLogAmount(goal, elapsedHours);
   persistGoalChange();
 }
 
 function incrementCounter(id) {
   const goal = findGoal(id);
-  if (!goal) return;
-  ensureGoalBuckets(goal);
-  goal.weekly_current += 1;
-  goal.four_week_current += 1;
-  goal.total_current += 1;
+  if (!goal || !isActiveToday(goal)) return;
+  addLogAmount(goal, 1);
   persistGoalChange();
 }
 
 function manualAddAmount(id) {
   const goal = findGoal(id);
-  if (!goal) return;
+  if (!goal || !isActiveToday(goal)) return;
   const isStopwatch = goal.track_type === 'stopwatch';
-  const raw = prompt(isStopwatch ? '추가할 시간 (시간 단위, 예: 1.5)' : '추가할 개수');
+  const raw = prompt((isStopwatch ? '추가할 시간 (시간 단위, 예: 1.5)' : '추가할 개수') + ' — 수정하려면 음수 입력 가능');
   if (raw === null) return;
   const num = Number(raw);
   if (Number.isNaN(num)) { showToast('숫자를 입력해주세요'); return; }
 
-  ensureGoalBuckets(goal);
-  const amount = isStopwatch ? round2(num) : Math.round(num);
-  goal.weekly_current = round2(goal.weekly_current + amount);
-  goal.four_week_current = round2(goal.four_week_current + amount);
-  goal.total_current = round2(goal.total_current + amount);
-  persistGoalChange();
-}
-
-function resetGoalTotal(id) {
-  const goal = findGoal(id);
-  if (!goal) return;
-  if (!confirm('총 누적을 0으로 리셋할까요? (분기/반기/연간 새 시작용)')) return;
-  goal.total_current = 0;
+  addLogAmount(goal, isStopwatch ? num : Math.round(num));
   persistGoalChange();
 }
 
@@ -1022,10 +1099,6 @@ function renderGoals() {
     el.innerHTML = '<div class="empty">아직 목표가 없어요. 위에서 추가해보세요.</div>';
     return;
   }
-
-  let anyReset = false;
-  goals.forEach(g => { if (ensureGoalBuckets(g)) anyReset = true; });
-  if (anyReset) { saveLocal(); saveGoalsToGist(); }
 
   const groups = {};
   goals.forEach(g => {
@@ -1065,7 +1138,8 @@ function renderHomeGoals() {
     const isAuto = g.track_type === 'stopwatch' || g.track_type === 'counter';
     let status;
     if (isAuto) {
-      status = `이번주 ${g.weekly_current}${escapeHtml(g.unit || '')}` + (g.target ? `/${g.target}${escapeHtml(g.unit || '')}` : '');
+      const week = goalTiers(g).find(t => t.key === 'week');
+      status = `이번주 ${week.current}${escapeHtml(g.unit || '')}` + (week.expected != null ? `/${week.expected}${escapeHtml(g.unit || '')}` : '');
     } else {
       const hasTarget = g.target !== null && g.target !== undefined && g.target !== '' && !Number.isNaN(Number(g.target));
       status = hasTarget
@@ -1079,11 +1153,15 @@ function renderHomeGoals() {
 
 function goalItemHtml(g) {
   if (g.track_type === 'stopwatch' || g.track_type === 'counter') {
-    const weeklyText = `이번주 ${g.weekly_current}${escapeHtml(g.unit || '')}` + (g.target ? ` / ${g.target}${escapeHtml(g.unit || '')}` : '');
-    const statsLine = `4주 누적 ${g.four_week_current}${escapeHtml(g.unit || '')} · 총 누적 ${g.total_current}${escapeHtml(g.unit || '')} <button onclick="resetGoalTotal('${g.id}')">리셋</button>`;
+    const tiersHtml = goalTiers(g).map(t =>
+      `<div class="goal-tier-row"><span>${t.label}</span><span>${t.current}${escapeHtml(g.unit || '')}${t.expected != null ? ' / ' + t.expected + escapeHtml(g.unit || '') : ''}</span></div>`
+    ).join('');
 
+    const active = isActiveToday(g);
     let controlsHtml;
-    if (g.track_type === 'stopwatch') {
+    if (!active) {
+      controlsHtml = `<div class="goal-inactive-note">오늘은 목표 활동일이 아니에요</div>`;
+    } else if (g.track_type === 'stopwatch') {
       const running = !!g.running_since;
       controlsHtml = running
         ? `<button class="running" onclick="stopStopwatch('${g.id}')">■ 정지 <span class="stopwatch-live" data-start="${g.running_since}">00:00</span></button>
@@ -1100,8 +1178,7 @@ function goalItemHtml(g) {
         <div><span class="goal-title">${escapeHtml(g.title)}</span></div>
         <div class="goal-actions"><button onclick="editGoal('${g.id}')" title="수정">✎</button><button onclick="deleteGoal('${g.id}')" title="삭제">✕</button></div>
       </div>
-      <div class="goal-weekly-text" style="cursor:pointer" onclick="overrideWeeklyCurrent('${g.id}')">${weeklyText}</div>
-      <div class="goal-stats-line">${statsLine}</div>
+      <div class="goal-tiers">${tiersHtml}</div>
       <div class="goal-controls">${controlsHtml}</div>
     </div>`;
   }
@@ -1144,6 +1221,8 @@ loadLocal();
 document.getElementById('token-input').value = state.gistToken || '';
 document.getElementById('gist-id-input').value = state.gistId || DEFAULT_GIST_ID;
 document.getElementById('goal-period-label').value = defaultPeriodLabel('month');
+renderDayChips();
+onTrackTypeChange();
 state.goalsData = state.goalsData || { updated_at: null, goals: [] };
 renderAll();
 syncGist();
