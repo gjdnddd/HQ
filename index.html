@@ -548,19 +548,24 @@ function renderHomeTodo() {
 
   const candidates = todoRaw.items.filter(i => i.deadline_type === 'exact' && i.deadline_value && i.status !== 'done');
 
+  /* todo-app 업무탭과 동일 규칙: 기한이 오늘이거나 지난(연체) 항목 + 수동 추가(pin)는 완료/해제 전까지 유지.
+     pin의 날짜/주 값은 비교하지 않는다(값이 있으면 유지). */
+  const isOnOrBeforeToday = (d) => d <= today;
+  const weekOnlyDeadline = (i) => i.deadline_value && isDateThisWeek(i.deadline_value) && !isOnOrBeforeToday(i.deadline_value);
+
   const pinnedTodayItems = todoRaw.items.filter(i =>
-    i.pinned_today === today && i.status !== 'done' &&
-    !(i.deadline_type === 'exact' && i.deadline_value === today)
+    !!i.pinned_today && i.status !== 'done' &&
+    !(i.deadline_type === 'exact' && i.deadline_value && isOnOrBeforeToday(i.deadline_value))
   );
-  const todayItems = [...candidates.filter(i => i.deadline_value === today), ...pinnedTodayItems];
+  const todayItems = [...candidates.filter(i => isOnOrBeforeToday(i.deadline_value)), ...pinnedTodayItems];
   const todayIds = new Set(todayItems.map(i => i.id));
 
   const pinnedWeekItems = todoRaw.items.filter(i =>
-    i.pinned_week === wid && i.status !== 'done' && !todayIds.has(i.id) &&
-    !(i.deadline_type === 'exact' && i.deadline_value && isDateThisWeek(i.deadline_value))
+    !!i.pinned_week && i.status !== 'done' && !todayIds.has(i.id) &&
+    !(i.deadline_type === 'exact' && i.deadline_value && weekOnlyDeadline(i))
   );
   const weekItems = [
-    ...candidates.filter(i => i.deadline_value !== today && isDateThisWeek(i.deadline_value)),
+    ...candidates.filter(weekOnlyDeadline),
     ...pinnedWeekItems,
   ];
 
@@ -611,18 +616,14 @@ function checklistGroupHtml(g) {
   return `<div class="todo-sub-title" style="margin-top:8px">${escapeHtml(g.cs.title)}</div>${subItems}`;
 }
 
-async function writeTodoBack(successMsg) {
+// 바뀐 객체만 보낸다 — 서버(mergeById)가 id 기준으로 병합하고 서버에만 있는 항목은 보존하므로,
+// 전체 목록을 보내면 오래된 사본이 다른 항목의 최신 수정을 되돌릴 수 있다.
+async function writeTodoPartial(payload, successMsg) {
   try {
     const res = await fetch(TODO_WRITE_URL, {
       method: 'POST',
       headers: { 'X-API-Key': TODO_API_KEY, 'Content-Type': 'application/json; charset=utf-8' },
-      body: JSON.stringify({
-        items: todoRaw.items,
-        topics: todoRaw.topics,
-        recurring: todoRaw.recurring,
-        checklist_sets: todoRaw.checklist_sets,
-        deleted_ids: [], deleted_topic_ids: [], deleted_recurring_ids: [], deleted_checklist_set_ids: [],
-      }),
+      body: JSON.stringify(payload),
     });
     if (!res.ok) throw new Error(res.status);
     showToast(successMsg || '완료 처리됨');
@@ -639,7 +640,7 @@ function completeTodoItem(id) {
   item.status = 'done';
   item.completed_at = new Date().toISOString();
   renderHomeTodo();
-  writeTodoBack();
+  writeTodoPartial({ items: [item] });
 }
 
 function completeRecurringItem(id) {
@@ -649,7 +650,7 @@ function completeRecurringItem(id) {
   r.last_done_at = new Date().toISOString();
   r.skipped = false;
   renderHomeTodo();
-  writeTodoBack();
+  writeTodoPartial({ recurring: [r] });
 }
 
 function completeChecklistSubItem(setId, itemId) {
@@ -657,7 +658,7 @@ function completeChecklistSubItem(setId, itemId) {
   if (!cs) return;
   if (!cs.checked_today.includes(itemId)) cs.checked_today.push(itemId);
   renderHomeTodo();
-  writeTodoBack();
+  writeTodoPartial({ checklist_sets: [cs] });
 }
 
 // ══════════════════════════════════════════════
