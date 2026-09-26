@@ -175,6 +175,72 @@
     color: var(--text2); font-size: 11px; cursor: pointer;
   }
   #save-status { font-size: 12px; }
+
+  /* 목표 달력(도장) */
+  .cal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .cal-head button {
+    background: var(--bg3); border: 1px solid var(--border2); color: var(--text1);
+    border-radius: 8px; padding: 4px 12px; font-size: 14px; cursor: pointer;
+  }
+  .cal-title { font-size: 15px; font-weight: 600; }
+  .cal-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .cal-chip {
+    padding: 3px 10px; border-radius: 999px; font-size: 12px; border: 1px solid var(--border2);
+    color: var(--text2); cursor: pointer; user-select: none; display: inline-flex; align-items: center; gap: 5px;
+  }
+  .cal-chip.on { background: var(--blue); color: #fff; border-color: var(--blue); }
+  .cal-chip i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)) 30px; gap: 3px; }
+  .cal-h { font-size: 11px; color: var(--text3); text-align: center; padding: 2px 0; }
+  .cal-cell {
+    background: var(--bg3); border-radius: 6px; min-height: 52px; padding: 3px; cursor: pointer;
+    border: 1.5px solid transparent; display: flex; flex-direction: column; gap: 2px;
+  }
+  .cal-cell .d { font-size: 11px; color: var(--text2); }
+  .cal-cell.today .d { color: var(--blue); font-weight: 600; }
+  .cal-cell.sel { border-color: var(--blue); }
+  .cal-cell.blank { background: transparent; cursor: default; }
+  .cal-cell.off { background: transparent; border: 1px dashed var(--border1); }
+  .stamps { display: flex; flex-wrap: wrap; gap: 2px; }
+  .stamp {
+    width: 17px; height: 17px; border-radius: 50%; border: 2px solid; display: inline-flex;
+    align-items: center; justify-content: center; font-size: 11px; font-weight: 700; line-height: 1;
+    transform: rotate(-8deg); flex-shrink: 0;
+  }
+  .cal-wk { font-size: 11px; color: var(--text3); display: flex; align-items: center; justify-content: center; }
+  .cal-caption { font-size: 11px; color: var(--text3); margin-top: 8px; line-height: 1.5; }
+
+  .rec-row { display: flex; align-items: flex-start; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--border1); }
+  .rec-row:last-child { border-bottom: none; }
+  .rec-dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
+  .rec-main { flex: 1; min-width: 0; font-size: 13px; }
+  .rec-note { font-size: 12px; color: var(--text3); margin-top: 2px; white-space: pre-line; word-break: break-word; }
+  .rec-form { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+  .rec-form select, .rec-form input {
+    padding: 10px 12px; background: var(--bg3); border: 1px solid var(--border2);
+    border-radius: 8px; color: var(--text1); font-size: 13px; outline: none;
+  }
+  .rec-form-row { display: flex; gap: 8px; }
+
+  /* 홈: 이번 주 도장판 */
+  .wk-goal { padding: 8px 0; border-bottom: 1px solid var(--border1); }
+  .wk-goal:last-child { border-bottom: none; }
+  .wk-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 5px; }
+  .wk-title { font-size: 13px; color: var(--text1); }
+  .wk-strip { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; }
+  .wk-head { margin-bottom: 2px; }
+  .wk-head span { font-size: 11px; color: var(--text3); text-align: center; }
+  .wk-cell {
+    background: var(--bg3); border-radius: 6px; height: 28px; display: flex; align-items: center;
+    justify-content: center; border: 1.5px solid transparent; cursor: pointer;
+  }
+  .wk-cell.today { border-color: var(--blue); }
+  .wk-cell.off { background: transparent; border: 1px dashed var(--border1); }
+  .wk-quick {
+    padding: 4px 12px; background: var(--bg3); border: 1px solid var(--border2); border-radius: 999px;
+    color: var(--text1); font-size: 12px; cursor: pointer;
+  }
+  .wk-quick.running { background: var(--blue); color: #fff; border-color: var(--blue); }
 </style>
 </head>
 <body>
@@ -191,7 +257,7 @@
   </div>
 
   <div class="card">
-    <h2>이번 달·주 목표</h2>
+    <h2>이번 주 도장</h2>
     <div id="home-goals"></div>
   </div>
 
@@ -209,28 +275,43 @@
 
 <div id="tab-goals" class="tab-content">
   <div class="card">
+    <div class="cal-head">
+      <button onclick="calShift(-1)" aria-label="이전 달">‹</button>
+      <span class="cal-title" id="cal-title"></span>
+      <span style="display:flex; gap:6px;">
+        <button onclick="calToday()">오늘</button>
+        <button onclick="calShift(1)" aria-label="다음 달">›</button>
+      </span>
+    </div>
+    <div class="cal-chips" id="cal-chips"></div>
+    <div class="cal-grid" id="cal-grid"></div>
+    <div class="cal-caption" id="cal-caption"></div>
+  </div>
+
+  <div class="card">
+    <h2 id="day-title"></h2>
+    <div id="day-records"></div>
+    <div id="day-add"></div>
+  </div>
+
+  <div class="card">
+    <h2>목표 현황</h2>
+    <div id="goals-list"></div>
+  </div>
+
+  <div class="card">
     <h2>목표 추가</h2>
     <div class="goal-form-row goal-form-row-wide">
       <input type="text" id="goal-category" placeholder="분야 (예: 건강, 투자, 자기관리)" />
     </div>
     <div class="goal-form-row">
-      <select id="goal-track-type" onchange="onTrackTypeChange()">
-        <option value="manual" selected>수동</option>
-        <option value="stopwatch">스톱워치</option>
+      <select id="goal-track-type">
+        <option value="stopwatch" selected>스톱워치</option>
         <option value="counter">카운터</option>
       </select>
-      <input type="text" id="goal-title" class="goal-title-input" placeholder="목표 제목 (예: 독서 4권)" />
+      <input type="text" id="goal-title" class="goal-title-input" placeholder="목표 제목 (예: 새벽집중)" />
     </div>
-    <div class="goal-form-row" id="goal-period-row">
-      <select id="goal-period-type">
-        <option value="year">연간</option>
-        <option value="quarter">분기</option>
-        <option value="month" selected>월</option>
-        <option value="week">주</option>
-      </select>
-      <input type="text" id="goal-period-label" class="goal-title-input" placeholder="예: 2026-07" />
-    </div>
-    <div class="goal-form-row" id="goal-days-row" style="display:none; flex-direction:column; align-items:flex-start; gap:6px;">
+    <div class="goal-form-row" id="goal-days-row" style="flex-direction:column; align-items:flex-start; gap:6px;">
       <div style="display:flex; gap:6px;">
         <button type="button" class="day-preset-btn" onclick="setActiveDaysPreset('all')">전체</button>
         <button type="button" class="day-preset-btn" onclick="setActiveDaysPreset('weekday')">평일만</button>
@@ -239,15 +320,10 @@
       <div class="day-chip-group" id="goal-days-chips"></div>
     </div>
     <div class="goal-form-row">
-      <input type="number" id="goal-target" class="goal-num-input" placeholder="목표 수치 (하루 기준, 선택)" />
-      <input type="text" id="goal-unit" class="goal-num-input" placeholder="단위 (예: 시간, 세트, 권)" />
+      <input type="number" id="goal-target" class="goal-num-input" placeholder="하루 목표 수치 (선택)" />
+      <input type="text" id="goal-unit" class="goal-num-input" placeholder="단위 (예: 시간, 세트, 종목)" />
     </div>
     <button class="btn" onclick="addGoal()">목표 추가 후 Gist에 저장</button>
-  </div>
-
-  <div class="card">
-    <h2>목표 현황</h2>
-    <div id="goals-list"></div>
   </div>
 </div>
 
@@ -322,6 +398,8 @@ let state = {
   gistId: DEFAULT_GIST_ID,
   mapData: { updated_at: null, items: [] },
   goalsData: { updated_at: null, goals: [] },
+  // 목표 기록: { '2026-09': [record, ...] } — Gist의 hq_records_YYYY-MM.json과 1:1
+  recordsByMonth: {},
 };
 
 // todo-app 원본 데이터 캐시 (완료 처리 시 전체를 다시 write해야 해서 보관)
@@ -384,11 +462,14 @@ async function syncGist() {
     const goalsContent = await readGistFile(data, GOALS_FILENAME);
     if (goalsContent) state.goalsData = JSON.parse(goalsContent);
 
-    const migrated = migrateGoalsIfNeeded();
+    await mergeRemoteRecords(data);
+    // 예전 daily_log → 기록 이관 (추가만 하는 방식, 토큰이 있는 기기에서만 새 파일로 저장)
+    const migratedMonths = migrateDailyLogToRecords();
+
     saveLocal();
     renderAll();
     showToast('불러오기 완료');
-    if (migrated) saveGoalsToGist();
+    if (state.gistToken) migratedMonths.forEach(m => saveRecordsMonth(m));
   } catch (e) {
     showToast('불러오기 실패: ' + e.message);
   }
@@ -798,7 +879,10 @@ function addManualItem() {
 }
 
 // ══════════════════════════════════════════════
-//  목표
+//  목표 — 달력 도장 + 날짜별 상세 기록
+//  · "기록(records)"이 원본이고, 도장과 일/주/월/분기/반기 집계는 전부 기록에서 계산한다
+//  · 기록은 월별 파일(hq_records_YYYY-MM.json)로 같은 Gist에 저장한다 (파일이 커지는 것과 기기 간 덮어쓰기 방지)
+//  · 도장 규칙: 그날 그 목표의 기록이 1건이라도 있으면 찍힌다. 하루 목표치를 채우면 속이 찬 도장.
 // ══════════════════════════════════════════════
 function round2(n) { return Math.round(n * 100) / 100; }
 
@@ -813,29 +897,6 @@ function mondayISO(d) {
   const diff = day === 0 ? -6 : 1 - day;
   date.setDate(date.getDate() + diff);
   return localDateStr(date);
-}
-
-function defaultPeriodLabel(type) {
-  const now = new Date();
-  const y = now.getFullYear();
-  if (type === 'year') return String(y);
-  if (type === 'quarter') return `${y}-Q${Math.floor(now.getMonth() / 3) + 1}`;
-  if (type === 'week') {
-    const firstDay = new Date(y, 0, 1);
-    const week = Math.ceil(((now - firstDay) / 86400000 + firstDay.getDay() + 1) / 7);
-    return `${y}-W${week}`;
-  }
-  return `${y}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-}
-
-document.getElementById('goal-period-type').addEventListener('change', (e) => {
-  document.getElementById('goal-period-label').value = defaultPeriodLabel(e.target.value);
-});
-
-function onTrackTypeChange() {
-  const isManual = document.getElementById('goal-track-type').value === 'manual';
-  document.getElementById('goal-period-row').style.display = isManual ? 'flex' : 'none';
-  document.getElementById('goal-days-row').style.display = isManual ? 'none' : 'flex';
 }
 
 // ── 요일 선택 칩 ──
@@ -859,26 +920,213 @@ function getSelectedActiveDays() {
   return Array.from(document.querySelectorAll('#goal-days-chips .day-chip.active')).map(chip => Number(chip.dataset.day));
 }
 
-// ── 스톱워치/카운터 목표: 활성 요일·일별 로그 기반 집계 ──
-function isActiveToday(g) {
-  const days = g.active_days && g.active_days.length ? g.active_days : [0, 1, 2, 3, 4, 5, 6];
-  return days.includes(new Date().getDay());
+// ── 목표 공통 ──
+const STAMP_COLORS = ['#4F8CFF', '#1D9E75', '#D85A30', '#7F77DD', '#BA7517', '#D4537E', '#3B9AA3', '#639922'];
+
+// 목표를 만든 순서대로 색을 배정한다 (8개까지는 겹치지 않고, 기기가 달라도 같은 목표는 같은 색).
+// 목표를 지우면 그 뒤 목표들의 색이 한 칸씩 당겨질 수 있다.
+function goalColor(g) {
+  const sorted = activeGoals().slice().sort((a, b) =>
+    (a.created_at || '').localeCompare(b.created_at || '') || String(a.id).localeCompare(String(b.id)));
+  const idx = sorted.findIndex(x => x.id === g.id);
+  if (idx >= 0) return STAMP_COLORS[idx % STAMP_COLORS.length];
+  let h = 0; // 활성 목록에 없는 목표(예: 숨겨진 예전 목표)는 id 해시로 고정
+  for (const ch of String(g.id)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return STAMP_COLORS[h % STAMP_COLORS.length];
+}
+function goalChar(g) { return (g.title || '?').trim().charAt(0) || '?'; }
+
+// 수동형(마일스톤) 목표는 폐지 — 예전 데이터에 남아 있어도 화면에서는 숨기기만 하고 지우지 않는다
+function activeGoals() {
+  return (state.goalsData.goals || []).filter(g => g.track_type === 'stopwatch' || g.track_type === 'counter');
+}
+function findGoal(id) { return (state.goalsData.goals || []).find(g => g.id === id); }
+function goalActiveDays(g) { return g.active_days && g.active_days.length ? g.active_days : [0, 1, 2, 3, 4, 5, 6]; }
+function isActiveToday(g) { return goalActiveDays(g).includes(new Date().getDay()); }
+
+// ── 기록(records) 저장소 ──
+const RECORD_FILE_RE = /^hq_records_(\d{4}-\d{2})\.json$/;
+function recordsFilename(month) { return `hq_records_${month}.json`; }
+function recTime(r) { return r.updated_at || r.created_at || ''; }
+
+// id 기준 병합 — 같은 id면 updated_at이 최신인 쪽이 이긴다 (삭제는 deleted 표시로 전파)
+function mergeRecordLists(a, b) {
+  const map = new Map();
+  [...b, ...a].forEach(r => {
+    if (!r || !r.id) return;
+    const cur = map.get(r.id);
+    if (!cur || recTime(r) >= recTime(cur)) map.set(r.id, r);
+  });
+  return Array.from(map.values());
 }
 
-function addLogAmount(g, amount) {
-  const today = localDateStr(new Date());
-  g.daily_log = g.daily_log || [];
-  const entry = g.daily_log.find(e => e.date === today);
-  if (entry) entry.amount = round2(entry.amount + amount);
-  else g.daily_log.push({ date: today, amount: round2(amount) });
+function liveRecords() {
+  return Object.values(state.recordsByMonth || {}).flat().filter(r => !r.deleted);
 }
 
-function sumLogInRange(g, startStr, endStr) {
-  return round2((g.daily_log || []).filter(e => e.date >= startStr && e.date <= endStr).reduce((s, e) => s + e.amount, 0));
+// 렌더링 때마다 목표별·날짜별 합계를 다시 만들면 낭비라서, 기록이 바뀔 때만 무효화한다
+let recordIndexCache = null;
+function invalidateRecordIndex() { recordIndexCache = null; }
+function recordIndex() {
+  if (recordIndexCache) return recordIndexCache;
+  const byGoalDate = new Map();   // goalId -> Map(date -> 그날 합계)
+  const stampsByDate = new Map(); // date -> Set(goalId)
+  liveRecords().forEach(r => {
+    if (!byGoalDate.has(r.goal_id)) byGoalDate.set(r.goal_id, new Map());
+    const m = byGoalDate.get(r.goal_id);
+    m.set(r.date, round2((m.get(r.date) || 0) + (Number(r.amount) || 0)));
+    if (!stampsByDate.has(r.date)) stampsByDate.set(r.date, new Set());
+    stampsByDate.get(r.date).add(r.goal_id);
+  });
+  recordIndexCache = { byGoalDate, stampsByDate };
+  return recordIndexCache;
 }
 
+function sumRecordsInRange(g, startStr, endStr) {
+  const m = recordIndex().byGoalDate.get(g.id);
+  if (!m) return 0;
+  let sum = 0;
+  m.forEach((amt, date) => { if (date >= startStr && date <= endStr) sum += amt; });
+  return round2(sum);
+}
+
+function findRecord(id) {
+  for (const [month, list] of Object.entries(state.recordsByMonth || {})) {
+    const rec = list.find(x => x.id === id);
+    if (rec) return { rec, month };
+  }
+  return null;
+}
+
+function addRecord({ goalId, date, amount, start = null, end = null, note = '', source = 'manual' }) {
+  const now = new Date().toISOString();
+  const rec = {
+    id: crypto.randomUUID(), goal_id: goalId, date, amount: round2(amount),
+    start, end, note, source, created_at: now, updated_at: now,
+  };
+  const month = date.slice(0, 7);
+  state.recordsByMonth = state.recordsByMonth || {};
+  (state.recordsByMonth[month] = state.recordsByMonth[month] || []).push(rec);
+  recordsChanged(month);
+  return rec;
+}
+
+function updateRecord(id, patch) {
+  const f = findRecord(id);
+  if (!f) return;
+  Object.assign(f.rec, patch, { updated_at: new Date().toISOString() });
+  recordsChanged(f.month);
+}
+
+function deleteRecord(id) {
+  const f = findRecord(id);
+  if (!f) return;
+  f.rec.deleted = true;
+  f.rec.updated_at = new Date().toISOString();
+  recordsChanged(f.month);
+}
+
+function recordsChanged(month) {
+  invalidateRecordIndex();
+  saveLocal();
+  renderGoals();
+  renderHomeGoals();
+  saveRecordsMonth(month);
+}
+
+// 같은 달 저장을 순서대로 처리한다 (연달아 눌러도 서로 덮어쓰지 않게)
+const recordSaveQueue = {};
+function saveRecordsMonth(month) {
+  const prev = recordSaveQueue[month] || Promise.resolve();
+  const next = prev.then(() => doSaveRecordsMonth(month)).catch(() => {});
+  recordSaveQueue[month] = next;
+  return next;
+}
+
+async function doSaveRecordsMonth(month) {
+  const token = state.gistToken;
+  const gistId = state.gistId;
+  if (!token || !gistId) { showToast('토큰과 Gist ID를 먼저 입력해주세요'); return; }
+  try {
+    // 다른 기기에서 추가한 기록을 덮어쓰지 않도록 최신본을 받아 id 기준으로 합친 뒤 그 달 파일만 저장한다
+    const getRes = await fetch(`https://api.github.com/gists/${gistId}`, {
+      headers: { Authorization: `token ${token}`, Accept: 'application/vnd.github.v3+json' },
+    });
+    if (!getRes.ok) throw new Error(getRes.status);
+    const gist = await getRes.json();
+    const remoteText = await readGistFile(gist, recordsFilename(month));
+    let remote = [];
+    if (remoteText) {
+      // 원격 파일을 못 읽으면 덮어쓰지 않고 중단한다 (손상된 파일을 빈 값으로 밀어버리지 않기 위해)
+      remote = JSON.parse(remoteText).records || [];
+    }
+    const merged = mergeRecordLists(state.recordsByMonth[month] || [], remote);
+    state.recordsByMonth[month] = merged;
+    invalidateRecordIndex();
+
+    const body = JSON.stringify({
+      files: { [recordsFilename(month)]: { content: JSON.stringify({ month, records: merged }, null, 2) } },
+    });
+    const res = await fetch(`https://api.github.com/gists/${gistId}`, {
+      method: 'PATCH',
+      headers: { Authorization: `token ${token}`, 'Content-Type': 'application/json' },
+      body,
+    });
+    if (!res.ok) throw new Error(res.status);
+    saveLocal();
+    updateSaveStatus(true);
+    renderGoals();
+    renderHomeGoals();
+    showToast('기록 저장 완료');
+  } catch (e) {
+    showToast('기록 저장 실패 — 토큰 확인');
+    updateSaveStatus(false);
+  }
+}
+
+// Gist에 있는 월별 기록 파일을 전부 읽어 로컬과 합친다
+async function mergeRemoteRecords(gistData) {
+  state.recordsByMonth = state.recordsByMonth || {};
+  for (const name of Object.keys(gistData.files || {})) {
+    const m = RECORD_FILE_RE.exec(name);
+    if (!m) continue;
+    const text = await readGistFile(gistData, name);
+    if (!text) continue;
+    let parsed;
+    try { parsed = JSON.parse(text); } catch (e) { continue; }
+    state.recordsByMonth[m[1]] = mergeRecordLists(state.recordsByMonth[m[1]] || [], parsed.records || []);
+  }
+  invalidateRecordIndex();
+}
+
+// 예전 daily_log(목표 안에 든 날짜별 합계)를 기록으로 옮긴다. 결정적 id라서 여러 번·여러 기기에서 돌려도
+// 중복이 생기지 않고, 이미 옮겼거나(사용자가 지운 것 포함) 새로 만든 기록은 건드리지 않는다.
+// daily_log 자체는 지우지 않고 그대로 둔다(백업 겸용). 새로 만든 기록이 있는 달 목록을 돌려준다.
+function migrateDailyLogToRecords() {
+  const changed = new Set();
+  state.recordsByMonth = state.recordsByMonth || {};
+  (state.goalsData.goals || []).forEach(g => {
+    (g.daily_log || []).forEach(e => {
+      if (!e || typeof e.date !== 'string' || !(Number(e.amount) > 0)) return;
+      const id = `mig_${g.id}_${e.date}`;
+      const month = e.date.slice(0, 7);
+      const list = (state.recordsByMonth[month] = state.recordsByMonth[month] || []);
+      if (list.some(r => r.id === id)) return;
+      const now = new Date().toISOString();
+      list.push({
+        id, goal_id: g.id, date: e.date, amount: round2(Number(e.amount)),
+        start: null, end: null, note: '', source: 'migrated', created_at: now, updated_at: now,
+      });
+      changed.add(month);
+    });
+  });
+  if (changed.size) invalidateRecordIndex();
+  return changed;
+}
+
+// ── 일/주/월/분기/반기 집계 (기록에서 계산) ──
 function countActiveDaysInRange(g, start, end) {
-  const days = g.active_days && g.active_days.length ? g.active_days : [0, 1, 2, 3, 4, 5, 6];
+  const days = goalActiveDays(g);
   let count = 0;
   const cur = new Date(start);
   while (cur <= end) {
@@ -914,21 +1162,14 @@ function goalTiers(g) {
 
   return ranges.map(r => {
     const startStr = localDateStr(r.start), endStr = localDateStr(r.end);
-    const current = sumLogInRange(g, startStr, endStr);
+    const current = sumRecordsInRange(g, startStr, endStr);
     const activeDayCount = countActiveDaysInRange(g, r.start, r.end);
     const expected = g.target ? round2(g.target * activeDayCount) : null;
     return { key: r.key, label: r.label, current, expected };
   });
 }
 
-// 신규 목표 구조로 전환되며 기존 목표(수동+스톱워치+카운터)는 전체 삭제 — Gist에 1회만 반영
-function migrateGoalsIfNeeded() {
-  if (state.goalsData.migrated_v2) return false;
-  state.goalsData.goals = [];
-  state.goalsData.migrated_v2 = true;
-  return true;
-}
-
+// ── 목표 추가·수정·삭제 ──
 function addGoal() {
   const category = document.getElementById('goal-category').value.trim();
   const trackType = document.getElementById('goal-track-type').value;
@@ -937,6 +1178,7 @@ function addGoal() {
   const unit = document.getElementById('goal-unit').value.trim();
   if (!title) { showToast('목표 제목을 입력해주세요'); return; }
 
+  const activeDays = getSelectedActiveDays();
   const goal = {
     id: crypto.randomUUID(),
     category,
@@ -944,22 +1186,10 @@ function addGoal() {
     title,
     target: targetRaw ? Number(targetRaw) : null,
     unit,
+    active_days: activeDays.length ? activeDays : [0, 1, 2, 3, 4, 5, 6],
+    running_since: null,
     created_at: new Date().toISOString(),
   };
-
-  if (trackType === 'manual') {
-    const periodType = document.getElementById('goal-period-type').value;
-    const periodLabel = document.getElementById('goal-period-label').value.trim() || defaultPeriodLabel(periodType);
-    goal.period_type = periodType;
-    goal.period_label = periodLabel;
-    goal.current = 0;
-    goal.done = false;
-  } else {
-    goal.active_days = getSelectedActiveDays();
-    if (!goal.active_days.length) goal.active_days = [0, 1, 2, 3, 4, 5, 6];
-    goal.daily_log = [];
-    goal.running_since = null;
-  }
 
   state.goalsData.goals = state.goalsData.goals || [];
   state.goalsData.goals.push(goal);
@@ -977,28 +1207,12 @@ function addGoal() {
   saveGoalsToGist();
 }
 
-function findGoal(id) {
-  return (state.goalsData.goals || []).find(g => g.id === id);
-}
-
 function persistGoalChange() {
   state.goalsData.updated_at = new Date().toISOString();
   saveLocal();
   renderGoals();
   renderHomeGoals();
   saveGoalsToGist();
-}
-
-function updateGoalCurrent(id) {
-  const goal = findGoal(id);
-  if (!goal) return;
-  const raw = prompt(`현재 수치 (목표 ${goal.target}${goal.unit || ''})`, goal.current);
-  if (raw === null) return;
-  const num = Number(raw);
-  if (Number.isNaN(num)) { showToast('숫자를 입력해주세요'); return; }
-  goal.current = num;
-  if (goal.target && num >= goal.target) goal.done = true;
-  persistGoalChange();
 }
 
 function editGoal(id) {
@@ -1009,97 +1223,299 @@ function editGoal(id) {
   if (newCategory === null) return;
   const newTitle = prompt('목표 제목', goal.title);
   if (newTitle === null) return;
-  const newTargetRaw = prompt('목표 수치 (선택, 비우면 없음)', goal.target ?? '');
+  const newTargetRaw = prompt('하루 목표 수치 (선택, 비우면 없음)', goal.target ?? '');
   if (newTargetRaw === null) return;
   const newUnit = prompt('단위', goal.unit || '');
   if (newUnit === null) return;
+  const daysRaw = prompt('활성 요일 (0=일 1=월 2=화 3=수 4=목 5=금 6=토, 쉼표로 구분)', goalActiveDays(goal).join(','));
+  if (daysRaw === null) return;
 
   goal.category = newCategory.trim();
   goal.title = newTitle.trim() || goal.title;
   goal.target = newTargetRaw.trim() ? Number(newTargetRaw) : null;
   goal.unit = newUnit.trim();
+  const parsed = daysRaw.split(',').map(s => Number(s.trim())).filter(n => !Number.isNaN(n) && n >= 0 && n <= 6);
+  if (parsed.length) goal.active_days = parsed;
 
-  if (goal.track_type === 'manual') {
-    const newPeriodType = prompt('기간유형 (year/quarter/month/week)', goal.period_type || 'month');
-    if (newPeriodType !== null && ['year', 'quarter', 'month', 'week'].includes(newPeriodType.trim())) {
-      goal.period_type = newPeriodType.trim();
-    }
-    const newPeriodLabel = prompt('기간 라벨', goal.period_label || '');
-    if (newPeriodLabel !== null) goal.period_label = newPeriodLabel.trim() || goal.period_label;
-  } else {
-    const daysRaw = prompt('활성 요일 (0=일 1=월 2=화 3=수 4=목 5=금 6=토, 쉼표로 구분)', (goal.active_days || []).join(','));
-    if (daysRaw !== null) {
-      const parsed = daysRaw.split(',').map(s => Number(s.trim())).filter(n => !Number.isNaN(n) && n >= 0 && n <= 6);
-      if (parsed.length) goal.active_days = parsed;
-    }
-  }
-
-  persistGoalChange();
-}
-
-function toggleGoalDone(id) {
-  const goal = findGoal(id);
-  if (!goal) return;
-  goal.done = !goal.done;
   persistGoalChange();
 }
 
 function deleteGoal(id) {
-  if (!confirm('이 목표를 삭제할까요?')) return;
+  if (!confirm('이 목표를 삭제할까요? (지금까지의 기록 파일은 남고, 화면에서만 사라져요)')) return;
   state.goalsData.goals = (state.goalsData.goals || []).filter(g => g.id !== id);
   persistGoalChange();
 }
 
+// ── 빠른 기록: 스톱워치 · 카운터 · 직접 입력 ──
 function startStopwatch(id) {
   const goal = findGoal(id);
   if (!goal || !isActiveToday(goal)) return;
   goal.running_since = Date.now();
   saveLocal();
   renderGoals();
+  renderHomeGoals();
 }
 
 function stopStopwatch(id) {
   const goal = findGoal(id);
   if (!goal || !goal.running_since) return;
-  const elapsedMs = Date.now() - goal.running_since;
+  const startMs = goal.running_since;
+  const elapsedHours = (Date.now() - startMs) / 3600000;
   goal.running_since = null;
-  const elapsedHours = elapsedMs / 3600000;
+  saveLocal();
 
   if (elapsedHours > 5) {
-    showToast('5시간 초과로 기록하지 않았어요 — 직접 입력을 이용해주세요');
-    persistGoalChange();
+    showToast('5시간 초과로 기록하지 않았어요 — 날짜 상세의 "기록 추가"로 직접 입력해주세요');
+    renderGoals();
+    renderHomeGoals();
     return;
   }
-
-  addLogAmount(goal, elapsedHours);
-  persistGoalChange();
+  const amount = round2(elapsedHours);
+  if (amount <= 0) {
+    showToast('너무 짧아서 기록하지 않았어요');
+    renderGoals();
+    renderHomeGoals();
+    return;
+  }
+  // 날짜는 시작한 날 기준 (자정을 넘긴 세션도 시작한 날의 도장이 된다)
+  addRecord({
+    goalId: id, date: localDateStr(new Date(startMs)), amount,
+    start: new Date(startMs).toISOString(), end: new Date().toISOString(), source: 'stopwatch',
+  });
 }
 
 function incrementCounter(id) {
   const goal = findGoal(id);
   if (!goal || !isActiveToday(goal)) return;
-  addLogAmount(goal, 1);
-  persistGoalChange();
+  addRecord({ goalId: id, date: localDateStr(new Date()), amount: 1, source: 'counter' });
 }
 
 function manualAddAmount(id) {
   const goal = findGoal(id);
   if (!goal || !isActiveToday(goal)) return;
   const isStopwatch = goal.track_type === 'stopwatch';
-  const raw = prompt((isStopwatch ? '추가할 시간 (시간 단위, 예: 1.5)' : '추가할 개수') + ' — 수정하려면 음수 입력 가능');
+  const raw = prompt(isStopwatch ? '추가할 시간 (시간 단위, 예: 1.5)' : '추가할 개수');
   if (raw === null) return;
   const num = Number(raw);
-  if (Number.isNaN(num)) { showToast('숫자를 입력해주세요'); return; }
-
-  addLogAmount(goal, isStopwatch ? num : Math.round(num));
-  persistGoalChange();
+  const amount = isStopwatch ? round2(num) : Math.round(num);
+  if (Number.isNaN(num) || amount <= 0) { showToast('0보다 큰 숫자를 입력해주세요'); return; }
+  const note = prompt('메모 (선택)');
+  addRecord({ goalId: id, date: localDateStr(new Date()), amount, note: (note || '').trim(), source: 'manual' });
 }
 
+// ── 달력 ──
+const calState = (() => {
+  const now = new Date();
+  return { year: now.getFullYear(), month: now.getMonth(), selected: localDateStr(now), filter: null, addOpen: false };
+})();
+
+function calShift(delta) {
+  calState.month += delta;
+  if (calState.month < 0) { calState.month = 11; calState.year--; }
+  if (calState.month > 11) { calState.month = 0; calState.year++; }
+  calState.addOpen = false;
+  renderCalendar();
+  renderDayDetail();
+}
+
+function calToday() {
+  const now = new Date();
+  calState.year = now.getFullYear();
+  calState.month = now.getMonth();
+  calState.selected = localDateStr(now);
+  calState.addOpen = false;
+  renderCalendar();
+  renderDayDetail();
+}
+
+function calSetFilter(goalId) {
+  calState.filter = goalId || null;
+  renderCalendar();
+  renderDayDetail();
+}
+
+function calSelect(date) {
+  calState.selected = date;
+  calState.addOpen = false;
+  renderCalendar();
+  renderDayDetail();
+}
+
+// 홈의 주간 도장판에서 날짜를 누르면 목표 탭의 그 날짜로 이동
+function openGoalDay(date) {
+  const [y, m] = date.split('-').map(Number);
+  calState.year = y;
+  calState.month = m - 1;
+  calState.selected = date;
+  calState.addOpen = false;
+  switchTab('goals');
+  renderGoals();
+}
+
+// 도장: 색과 글자(목표 이름 첫 글자)로 목표를 구분, 하루 목표치를 채우면 속이 찬 도장
+function stampHtml(g, dayAmount) {
+  const c = goalColor(g);
+  const reached = g.target && dayAmount >= g.target;
+  const style = reached ? `background:${c};border-color:${c};color:#fff` : `border-color:${c};color:${c}`;
+  return `<span class="stamp" style="${style}">${escapeHtml(goalChar(g))}</span>`;
+}
+
+function renderCalendar() {
+  const goals = activeGoals();
+  const filterGoal = calState.filter ? goals.find(g => g.id === calState.filter) : null;
+  if (calState.filter && !filterGoal) calState.filter = null;
+  const visible = filterGoal ? [filterGoal] : goals;
+  const { stampsByDate, byGoalDate } = recordIndex();
+  const today = localDateStr(new Date());
+
+  document.getElementById('cal-title').textContent = `${calState.year}년 ${calState.month + 1}월`;
+
+  document.getElementById('cal-chips').innerHTML =
+    `<span class="cal-chip ${calState.filter ? '' : 'on'}" onclick="calSetFilter('')">전체</span>` +
+    goals.map(g =>
+      `<span class="cal-chip ${calState.filter === g.id ? 'on' : ''}" onclick="calSetFilter('${g.id}')"><i style="background:${goalColor(g)}"></i>${escapeHtml(g.title)}</span>`
+    ).join('');
+
+  const first = new Date(calState.year, calState.month, 1);
+  const lead = (first.getDay() + 6) % 7; // 월요일 시작
+  const daysInMonth = new Date(calState.year, calState.month + 1, 0).getDate();
+  const cells = [];
+  for (let i = 0; i < lead; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+  while (cells.length % 7) cells.push(null);
+
+  let html = ['월', '화', '수', '목', '금', '토', '일'].map(l => `<div class="cal-h">${l}</div>`).join('') + '<div class="cal-h">도장</div>';
+  let monthStamps = 0;
+  const stampDays = new Set();
+
+  for (let r = 0; r < cells.length / 7; r++) {
+    let weekStamps = 0;
+    for (let c = 0; c < 7; c++) {
+      const d = cells[r * 7 + c];
+      if (d === null) { html += '<div class="cal-cell blank"></div>'; continue; }
+      const date = `${calState.year}-${String(calState.month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      const ids = stampsByDate.get(date);
+      const shown = ids ? visible.filter(g => ids.has(g.id)) : [];
+      weekStamps += shown.length;
+      monthStamps += shown.length;
+      if (shown.length) stampDays.add(date);
+      // 목표를 하나만 골랐을 때, 그 목표의 활동일이 아닌 요일은 점선 칸으로 표시
+      const dow = (c + 1) % 7;
+      const off = filterGoal && !goalActiveDays(filterGoal).includes(dow);
+      const cls = `cal-cell${date === today ? ' today' : ''}${date === calState.selected ? ' sel' : ''}${off ? ' off' : ''}`;
+      const stamps = shown.map(g => stampHtml(g, (byGoalDate.get(g.id) || new Map()).get(date) || 0)).join('');
+      html += `<div class="${cls}" onclick="calSelect('${date}')"><span class="d">${d}</span><div class="stamps">${stamps}</div></div>`;
+    }
+    html += `<div class="cal-wk">${weekStamps || ''}</div>`;
+  }
+  document.getElementById('cal-grid').innerHTML = html;
+  document.getElementById('cal-caption').textContent =
+    `${calState.month + 1}월 도장 ${monthStamps}개 · 기록한 날 ${stampDays.size}일 — 도장은 그날 기록이 있으면 찍히고, 속이 찬 도장은 하루 목표를 채운 날이에요.`;
+}
+
+function formatHM(iso) {
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+function renderDayDetail() {
+  const date = calState.selected;
+  const [y, m, d] = date.split('-').map(Number);
+  const dow = DAYS_KO[new Date(y, m - 1, d).getDay()];
+  document.getElementById('day-title').textContent = `${m}월 ${d}일 (${dow}) 기록`;
+
+  const goals = activeGoals();
+  const records = liveRecords()
+    .filter(r => r.date === date)
+    .sort((a, b) => (a.start || a.created_at || '').localeCompare(b.start || b.created_at || ''));
+
+  const listEl = document.getElementById('day-records');
+  if (!records.length) {
+    listEl.innerHTML = '<div class="empty">이 날은 기록이 없어요</div>';
+  } else {
+    listEl.innerHTML = records.map(r => {
+      const g = goals.find(x => x.id === r.goal_id) || findGoal(r.goal_id);
+      const color = g ? goalColor(g) : '#888';
+      const title = g ? escapeHtml(g.title) : '(삭제된 목표)';
+      const unit = g ? escapeHtml(g.unit || '') : '';
+      const time = r.start && r.end ? ` · ${formatHM(r.start)}–${formatHM(r.end)}` : '';
+      const note = r.note ? `<div class="rec-note">${escapeHtml(r.note)}</div>` : '';
+      return `<div class="rec-row">
+        <span class="rec-dot" style="background:${color}"></span>
+        <div class="rec-main"><div>${title} · ${r.amount}${unit}${time}</div>${note}</div>
+        <div class="goal-actions"><button onclick="editRecord('${r.id}')" title="수정">✎</button><button onclick="removeRecord('${r.id}')" title="삭제">✕</button></div>
+      </div>`;
+    }).join('');
+  }
+
+  const addEl = document.getElementById('day-add');
+  if (!goals.length) { addEl.innerHTML = ''; return; }
+  if (!calState.addOpen) {
+    addEl.innerHTML = '<button class="btn" style="margin-top:10px" onclick="toggleAddRecord()">+ 기록 추가</button>';
+    return;
+  }
+  const preselect = calState.filter || goals[0].id;
+  addEl.innerHTML = `<div class="rec-form">
+    <select id="rec-goal">${goals.map(g => `<option value="${g.id}" ${g.id === preselect ? 'selected' : ''}>${escapeHtml(g.title)} (${escapeHtml(g.unit || '')})</option>`).join('')}</select>
+    <input type="number" id="rec-amount" step="any" inputmode="decimal" placeholder="양 (스톱워치 목표는 시간 단위, 예: 1.5)" />
+    <input type="text" id="rec-note" placeholder="메모 (선택)" />
+    <div class="rec-form-row">
+      <button class="btn" onclick="submitAddRecord()">저장</button>
+      <button class="btn" style="background:var(--bg3);color:var(--text1)" onclick="toggleAddRecord()">취소</button>
+    </div>
+  </div>`;
+}
+
+function toggleAddRecord() {
+  calState.addOpen = !calState.addOpen;
+  renderDayDetail();
+}
+
+function submitAddRecord() {
+  const g = findGoal(document.getElementById('rec-goal').value);
+  if (!g) { showToast('목표를 선택해주세요'); return; }
+  const num = Number(document.getElementById('rec-amount').value);
+  const amount = g.track_type === 'stopwatch' ? round2(num) : Math.round(num);
+  if (Number.isNaN(num) || amount <= 0) { showToast('0보다 큰 숫자를 입력해주세요'); return; }
+  const date = calState.selected;
+  if (date > localDateStr(new Date())) { showToast('오늘 이후 날짜에는 기록할 수 없어요'); return; }
+  const note = document.getElementById('rec-note').value.trim();
+  calState.addOpen = false;
+  addRecord({ goalId: g.id, date, amount, note, source: 'manual' });
+}
+
+function editRecord(id) {
+  const f = findRecord(id);
+  if (!f) return;
+  const g = findGoal(f.rec.goal_id);
+  const isStopwatch = g && g.track_type === 'stopwatch';
+  const rawAmount = prompt(isStopwatch ? '시간 (시간 단위)' : '개수', f.rec.amount);
+  if (rawAmount === null) return;
+  const num = Number(rawAmount);
+  const amount = isStopwatch ? round2(num) : Math.round(num);
+  if (Number.isNaN(num) || amount <= 0) { showToast('0보다 큰 숫자를 입력해주세요'); return; }
+  const note = prompt('메모', f.rec.note || '');
+  if (note === null) return;
+  updateRecord(id, { amount, note: note.trim() });
+}
+
+function removeRecord(id) {
+  if (!confirm('이 기록을 삭제할까요?')) return;
+  deleteRecord(id);
+}
+
+// ── 목표 목록 (오늘의 빠른 기록 + 일/주/월/분기/반기 누적) ──
 function renderGoals() {
+  renderCalendar();
+  renderDayDetail();
+  renderGoalList();
+}
+
+function renderGoalList() {
   const el = document.getElementById('goals-list');
-  const goals = state.goalsData.goals || [];
+  const goals = activeGoals();
   if (!goals.length) {
-    el.innerHTML = '<div class="empty">아직 목표가 없어요. 위에서 추가해보세요.</div>';
+    el.innerHTML = '<div class="empty">아직 목표가 없어요. 아래에서 추가해보세요.</div>';
     return;
   }
 
@@ -1121,83 +1537,78 @@ function renderGoals() {
   }).join('');
 }
 
-function renderHomeGoals() {
-  const el = document.getElementById('home-goals');
-  const goals = state.goalsData.goals || [];
-  const curMonth = defaultPeriodLabel('month');
-  const curWeek = defaultPeriodLabel('week');
-  const relevant = goals.filter(g =>
-    g.track_type === 'stopwatch' || g.track_type === 'counter' ||
-    (g.period_type === 'month' && g.period_label === curMonth) ||
-    (g.period_type === 'week' && g.period_label === curWeek)
-  );
-
-  if (!relevant.length) {
-    el.innerHTML = '<div class="empty">이번 달·주 목표가 없어요</div>';
-    return;
+function quickControlsHtml(g) {
+  if (!isActiveToday(g)) return `<div class="goal-inactive-note">오늘은 목표 활동일이 아니에요</div>`;
+  if (g.track_type === 'stopwatch') {
+    return g.running_since
+      ? `<button class="running" onclick="stopStopwatch('${g.id}')">■ 정지 <span class="stopwatch-live" data-start="${g.running_since}">00:00</span></button>
+         <button onclick="manualAddAmount('${g.id}')">직접 입력</button>`
+      : `<button onclick="startStopwatch('${g.id}')">▶ 시작</button>
+         <button onclick="manualAddAmount('${g.id}')">직접 입력</button>`;
   }
-
-  el.innerHTML = relevant.map(g => {
-    const isAuto = g.track_type === 'stopwatch' || g.track_type === 'counter';
-    let status;
-    if (isAuto) {
-      const week = goalTiers(g).find(t => t.key === 'week');
-      status = `이번주 ${week.current}${escapeHtml(g.unit || '')}` + (week.expected != null ? `/${week.expected}${escapeHtml(g.unit || '')}` : '');
-    } else {
-      const hasTarget = g.target !== null && g.target !== undefined && g.target !== '' && !Number.isNaN(Number(g.target));
-      status = hasTarget
-        ? `${g.current}${escapeHtml(g.unit || '')}/${g.target}${escapeHtml(g.unit || '')}`
-        : (g.done ? '✅ 완료' : '⬜ 진행중');
-    }
-    const cat = g.category ? `${escapeHtml(g.category)} · ` : '';
-    return `<div class="home-goal-row">${escapeHtml(g.title)} <span class="goal-period">${cat}${status}</span></div>`;
-  }).join('');
+  return `<button onclick="incrementCounter('${g.id}')">+1</button>
+    <button onclick="manualAddAmount('${g.id}')">직접 입력</button>`;
 }
 
 function goalItemHtml(g) {
-  if (g.track_type === 'stopwatch' || g.track_type === 'counter') {
-    const tiersHtml = goalTiers(g).map(t =>
-      `<div class="goal-tier-row"><span>${t.label}</span><span>${t.current}${escapeHtml(g.unit || '')}${t.expected != null ? ' / ' + t.expected + escapeHtml(g.unit || '') : ''}</span></div>`
-    ).join('');
-
-    const active = isActiveToday(g);
-    let controlsHtml;
-    if (!active) {
-      controlsHtml = `<div class="goal-inactive-note">오늘은 목표 활동일이 아니에요</div>`;
-    } else if (g.track_type === 'stopwatch') {
-      const running = !!g.running_since;
-      controlsHtml = running
-        ? `<button class="running" onclick="stopStopwatch('${g.id}')">■ 정지 <span class="stopwatch-live" data-start="${g.running_since}">00:00</span></button>
-           <button onclick="manualAddAmount('${g.id}')">직접 입력</button>`
-        : `<button onclick="startStopwatch('${g.id}')">▶ 시작</button>
-           <button onclick="manualAddAmount('${g.id}')">직접 입력</button>`;
-    } else {
-      controlsHtml = `<button onclick="incrementCounter('${g.id}')">+1</button>
-        <button onclick="manualAddAmount('${g.id}')">직접 입력</button>`;
-    }
-
-    return `<div class="goal-item">
-      <div class="goal-top">
-        <div><span class="goal-title">${escapeHtml(g.title)}</span></div>
-        <div class="goal-actions"><button onclick="editGoal('${g.id}')" title="수정">✎</button><button onclick="deleteGoal('${g.id}')" title="삭제">✕</button></div>
-      </div>
-      <div class="goal-tiers">${tiersHtml}</div>
-      <div class="goal-controls">${controlsHtml}</div>
-    </div>`;
-  }
-
-  const hasTarget = g.target !== null && g.target !== undefined && g.target !== '' && !Number.isNaN(Number(g.target));
-  const progressHtml = hasTarget
-    ? `<div class="goal-weekly-text" style="cursor:pointer" onclick="updateGoalCurrent('${g.id}')">${g.current}${escapeHtml(g.unit || '')} / ${g.target}${escapeHtml(g.unit || '')}</div>`
-    : `<div class="goal-check ${g.done ? 'done' : ''}" onclick="toggleGoalDone('${g.id}')">${g.done ? '✅ 완료' : '⬜ 완료 표시'}</div>`;
+  const tiersHtml = goalTiers(g).map(t =>
+    `<div class="goal-tier-row"><span>${t.label}</span><span>${t.current}${escapeHtml(g.unit || '')}${t.expected != null ? ' / ' + t.expected + escapeHtml(g.unit || '') : ''}</span></div>`
+  ).join('');
 
   return `<div class="goal-item">
     <div class="goal-top">
-      <div><span class="goal-title">${escapeHtml(g.title)}</span><span class="goal-period">${escapeHtml(g.period_label || '')}</span></div>
+      <div><span class="rec-dot" style="background:${goalColor(g)};display:inline-block;margin-right:6px"></span><span class="goal-title">${escapeHtml(g.title)}</span></div>
       <div class="goal-actions"><button onclick="editGoal('${g.id}')" title="수정">✎</button><button onclick="deleteGoal('${g.id}')" title="삭제">✕</button></div>
     </div>
-    ${progressHtml}
+    <div class="goal-tiers">${tiersHtml}</div>
+    <div class="goal-controls">${quickControlsHtml(g)}</div>
   </div>`;
+}
+
+// ── 홈: 이번 주 도장판 (월~일) + 오늘의 빠른 기록 ──
+function renderHomeGoals() {
+  const el = document.getElementById('home-goals');
+  const goals = activeGoals();
+  if (!goals.length) {
+    el.innerHTML = '<div class="empty">아직 목표가 없어요. 목표 탭에서 추가해보세요.</div>';
+    return;
+  }
+
+  const today = localDateStr(new Date());
+  const monday = new Date(mondayISO(new Date()) + 'T00:00:00');
+  const dates = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    dates.push(localDateStr(d));
+  }
+  const { byGoalDate } = recordIndex();
+
+  const head = `<div class="wk-strip wk-head">${['월', '화', '수', '목', '금', '토', '일'].map(l => `<span>${l}</span>`).join('')}</div>`;
+  el.innerHTML = head + goals.map(g => {
+    const perDay = byGoalDate.get(g.id) || new Map();
+    const active = goalActiveDays(g);
+    const cells = dates.map((date, i) => {
+      const amt = perDay.get(date);
+      const off = !active.includes((i + 1) % 7);
+      return `<div class="wk-cell${date === today ? ' today' : ''}${off ? ' off' : ''}" onclick="openGoalDay('${date}')">${amt !== undefined ? stampHtml(g, amt) : ''}</div>`;
+    }).join('');
+
+    let quick = '';
+    if (isActiveToday(g)) {
+      if (g.track_type === 'stopwatch') {
+        quick = g.running_since
+          ? `<button class="wk-quick running" onclick="stopStopwatch('${g.id}')">■ <span class="stopwatch-live" data-start="${g.running_since}">00:00</span></button>`
+          : `<button class="wk-quick" onclick="startStopwatch('${g.id}')">▶ 시작</button>`;
+      } else {
+        quick = `<button class="wk-quick" onclick="incrementCounter('${g.id}')">+1</button>`;
+      }
+    }
+    return `<div class="wk-goal">
+      <div class="wk-top"><span class="wk-title"><span class="rec-dot" style="background:${goalColor(g)};display:inline-block;margin-right:6px"></span>${escapeHtml(g.title)}</span>${quick}</div>
+      <div class="wk-strip">${cells}</div>
+    </div>`;
+  }).join('');
 }
 
 setInterval(() => {
@@ -1223,10 +1634,9 @@ document.getElementById('search-input').addEventListener('input', (e) => renderS
 loadLocal();
 document.getElementById('token-input').value = state.gistToken || '';
 document.getElementById('gist-id-input').value = state.gistId || DEFAULT_GIST_ID;
-document.getElementById('goal-period-label').value = defaultPeriodLabel('month');
 renderDayChips();
-onTrackTypeChange();
 state.goalsData = state.goalsData || { updated_at: null, goals: [] };
+state.recordsByMonth = state.recordsByMonth || {};
 renderAll();
 syncGist();
 fetchTodoWidget();
