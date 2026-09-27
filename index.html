@@ -366,7 +366,7 @@
     <label class="form-label">Gist ID</label>
     <input type="text" id="gist-id-input" placeholder="adff7f6a437517b81a7186f3bce352c8" />
     <button onclick="saveGistConfig()">설정 저장</button>
-    <button onclick="syncGist()" style="margin-left:8px;background:var(--bg3);color:var(--text1);">지금 불러오기</button>
+    <button onclick="syncGist(); loadMapData(true);" style="margin-left:8px;background:var(--bg3);color:var(--text1);">지금 불러오기</button>
   </div>
 </div>
 
@@ -385,6 +385,9 @@
 
 <script>
 const GIST_FILENAME = 'hq_scan_result.json';
+// 자료지도(약 900KB)는 목표·기록 Gist와 분리된 전용 Gist에 둔다 — 목표 Gist를 읽을 때마다(폰 알림 15분 주기 포함) 딸려오지 않게.
+// 자료지도는 "자료지도" 탭을 처음 열 때만 불러온다.
+const MAP_GIST_ID = '27be23cd860086cfb1a69e34a98b1d88';
 const GOALS_FILENAME = 'hq_goals.json';
 const DEFAULT_GIST_ID = 'adff7f6a437517b81a7186f3bce352c8';
 
@@ -469,6 +472,7 @@ function switchTab(name) {
   document.querySelectorAll('.tabbar button').forEach(el => el.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
   document.querySelector(`.tabbar button[data-tab="${name}"]`).classList.add('active');
+  if (name === 'map') loadMapData();
 }
 
 // ══════════════════════════════════════════════
@@ -486,9 +490,6 @@ async function syncGist() {
     const res = await fetch(`https://api.github.com/gists/${gistId}`, { headers });
     if (!res.ok) throw new Error(res.status);
     const data = await res.json();
-
-    const mapContent = await readGistFile(data, GIST_FILENAME);
-    if (mapContent) state.mapData = JSON.parse(mapContent);
 
     const goalsContent = await readGistFile(data, GOALS_FILENAME);
     if (goalsContent) state.goalsData = JSON.parse(goalsContent);
@@ -520,9 +521,9 @@ async function readGistFile(gistData, filename) {
   return content;
 }
 
-async function saveFileToGist(filename, dataObj, successMsg) {
+async function saveFileToGist(filename, dataObj, successMsg, gistIdOverride) {
   const token = state.gistToken;
-  const gistId = state.gistId;
+  const gistId = gistIdOverride || state.gistId;
   if (!token || !gistId) { showToast('토큰과 Gist ID를 먼저 입력해주세요'); updateSaveStatus(false); return; }
   try {
     const body = JSON.stringify({
@@ -544,7 +545,49 @@ async function saveFileToGist(filename, dataObj, successMsg) {
 }
 
 function saveToGist() {
-  return saveFileToGist(GIST_FILENAME, state.mapData, '자료지도 저장 완료');
+  return saveFileToGist(GIST_FILENAME, state.mapData, '자료지도 저장 완료', MAP_GIST_ID);
+}
+
+// 자료지도 전용 Gist에서 불러온다. 한 번 불러오면 이 페이지에서는 다시 받지 않는다(force면 다시).
+// 서버에서 받기 전(기기 캐시만 있는 상태)에는 라벨 수정·수동 등록을 막는다 — 오래된 캐시로 전체 파일을 덮어쓰지 않게.
+let mapLoad = { state: 'idle', promise: null };
+function loadMapData(force) {
+  if (!force && (mapLoad.state === 'ok' || mapLoad.state === 'loading')) return mapLoad.promise;
+  mapLoad.state = 'loading';
+  document.getElementById('updated-label').textContent = '자료지도 불러오는 중...';
+  mapLoad.promise = (async () => {
+    try {
+      const headers = { Accept: 'application/vnd.github.v3+json' };
+      if (state.gistToken) headers.Authorization = `token ${state.gistToken}`;
+      const res = await fetch(`https://api.github.com/gists/${MAP_GIST_ID}`, { headers });
+      if (!res.ok) throw new Error(res.status);
+      const content = await readGistFile(await res.json(), GIST_FILENAME);
+      if (!content) throw new Error('자료지도 파일 없음');
+      state.mapData = JSON.parse(content);
+      mapLoad.state = 'ok';
+      saveLocal();
+    } catch (e) {
+      mapLoad.state = 'fail';
+      showToast('자료지도 불러오기 실패: ' + e.message);
+    }
+    renderMapTab();
+  })();
+  return mapLoad.promise;
+}
+
+function mapReadyForEdit() {
+  if (mapLoad.state === 'ok') return true;
+  showToast('자료지도를 서버에서 불러온 뒤에 수정할 수 있어요');
+  loadMapData(true);
+  return false;
+}
+
+function renderMapTab() {
+  renderUpdatedLabel();
+  if (mapLoad.state === 'fail') document.getElementById('updated-label').textContent += ' · 서버에서 못 불러옴(기기 캐시) ⚠';
+  renderPinned();
+  renderHomeSummary();
+  renderSearch(document.getElementById('search-input').value);
 }
 
 function saveGoalsToGist() {
@@ -864,6 +907,7 @@ function resultItemHtml(it) {
 }
 
 function editLabel(id) {
+  if (!mapReadyForEdit()) return;
   const item = (state.mapData.items || []).find(x => x.id === id);
   if (!item) return;
 
@@ -888,6 +932,7 @@ function addManualItem() {
   const path = document.getElementById('manual-path').value.trim();
   const keywords = document.getElementById('manual-keywords').value.trim();
   if (!name || !path) { showToast('이름과 경로를 입력해주세요'); return; }
+  if (!mapReadyForEdit()) return;
 
   const item = {
     id: crypto.randomUUID(),
