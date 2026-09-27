@@ -173,7 +173,9 @@
     padding: 6px 10px; background: var(--bg3); border: 1px solid var(--border2); border-radius: 999px;
     color: var(--text2); font-size: 11px; cursor: pointer;
   }
-  #save-status { font-size: 12px; }
+  #sync-status { display: flex; flex-wrap: wrap; gap: 2px 10px; }
+  #sync-status .bad { color: #ff6b6b; }
+  #sync-status .lock { color: #e0a030; }
 
   /* 목표 달력(도장) */
   .cal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
@@ -249,7 +251,7 @@
 
 <header>
   <h1>HQ</h1>
-  <div class="updated"><span id="updated-label">자료지도 불러오는 중...</span><span id="save-status"></span></div>
+  <div class="updated" id="sync-status"></div>
 </header>
 
 <div id="tab-home" class="tab-content active">
@@ -327,6 +329,7 @@
 <div id="tab-map" class="tab-content">
   <div class="card">
     <h2>자료지도 요약</h2>
+    <div class="updated" id="updated-label" style="margin-bottom:8px;">자료지도 불러오는 중...</div>
     <div class="summary-row" id="home-summary">
       <span class="summary-pill">불러오는 중...</span>
     </div>
@@ -423,13 +426,42 @@ function showToast(msg) {
   setTimeout(() => t.classList.remove('show'), 2000);
 }
 
-// 헤더 상단에 상시 노출되는 마지막 저장 상태 (토스트는 금방 사라져서 보조 수단으로 유지)
-function updateSaveStatus(success) {
-  const el = document.getElementById('save-status');
+// 헤더 상단에 상시 노출되는 동기화 상태 (토스트는 금방 사라져서 보조 수단으로 유지)
+//  ↓ 불러옴: 이 기기가 Gist에서 마지막으로 받은 시각 / ↑ 저장: 이 기기가 마지막으로 올린 시각 / 서버: Gist 자체의 마지막 수정 시각(다른 기기 포함)
+const syncInfo = { load: { state: 'loading' }, save: null, server: null };
+function fmtHM(d) { return d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }); }
+function fmtServer(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return `${d.getMonth() + 1}/${d.getDate()} ${fmtHM(d)}`;
+}
+function renderSyncStatus() {
+  const el = document.getElementById('sync-status');
   if (!el) return;
-  const time = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
-  el.textContent = success ? ` · 마지막 저장 ${time} ✓` : ' · 저장 실패 ⚠';
-  el.style.color = success ? '' : '#ff6b6b';
+  const parts = [];
+  if (!state.gistToken) parts.push('<span class="lock">🔒 토큰 없음 · 읽기 전용</span>');
+  const l = syncInfo.load;
+  if (l.state === 'loading') parts.push('<span>↓ 불러오는 중…</span>');
+  else if (l.state === 'ok') parts.push(`<span>↓ 불러옴 ${l.at}</span>`);
+  else parts.push('<span class="bad">↓ 불러오기 실패 ⚠</span>');
+  const sv = syncInfo.save;
+  if (sv) parts.push(sv.ok ? `<span>↑ 저장 ${sv.at} ✓</span>` : '<span class="bad">↑ 저장 실패 ⚠</span>');
+  if (syncInfo.server) parts.push(`<span>서버 ${syncInfo.server}</span>`);
+  el.innerHTML = parts.join('');
+}
+function updateLoadStatus(ok, serverIso) {
+  syncInfo.load = ok ? { state: 'ok', at: fmtHM(new Date()) } : { state: 'fail' };
+  if (ok && serverIso) syncInfo.server = fmtServer(serverIso);
+  renderSyncStatus();
+}
+function updateSaveStatus(success, serverIso) {
+  syncInfo.save = { ok: success, at: fmtHM(new Date()) };
+  if (success && serverIso) syncInfo.server = fmtServer(serverIso);
+  renderSyncStatus();
+}
+// PATCH 응답에서 Gist의 마지막 수정 시각을 읽는다 (못 읽어도 저장 성공 판정에는 영향 없음)
+async function serverTimeOf(res) {
+  try { return (await res.json()).updated_at || null; } catch (e) { return null; }
 }
 
 function switchTab(name) {
@@ -446,6 +478,8 @@ async function syncGist() {
   const token = state.gistToken;
   const gistId = state.gistId;
   if (!gistId) { showToast('Gist ID를 먼저 입력해주세요'); return; }
+  syncInfo.load = { state: 'loading' };
+  renderSyncStatus();
   try {
     const headers = { Accept: 'application/vnd.github.v3+json' };
     if (token) headers.Authorization = `token ${token}`;
@@ -465,9 +499,11 @@ async function syncGist() {
 
     saveLocal();
     renderAll();
+    updateLoadStatus(true, data.updated_at);
     showToast('불러오기 완료');
     if (state.gistToken) migratedMonths.forEach(m => saveRecordsMonth(m));
   } catch (e) {
+    updateLoadStatus(false);
     showToast('불러오기 실패: ' + e.message);
   }
 }
@@ -487,7 +523,7 @@ async function readGistFile(gistData, filename) {
 async function saveFileToGist(filename, dataObj, successMsg) {
   const token = state.gistToken;
   const gistId = state.gistId;
-  if (!token || !gistId) { showToast('토큰과 Gist ID를 먼저 입력해주세요'); return; }
+  if (!token || !gistId) { showToast('토큰과 Gist ID를 먼저 입력해주세요'); updateSaveStatus(false); return; }
   try {
     const body = JSON.stringify({
       files: { [filename]: { content: JSON.stringify(dataObj, null, 2) } }
@@ -500,7 +536,7 @@ async function saveFileToGist(filename, dataObj, successMsg) {
     if (!res.ok) throw new Error(res.status);
     saveLocal();
     showToast(successMsg || 'Gist에 저장 완료');
-    updateSaveStatus(true);
+    updateSaveStatus(true, await serverTimeOf(res));
   } catch (e) {
     showToast('Gist 저장 실패 — 토큰 확인');
     updateSaveStatus(false);
@@ -519,6 +555,7 @@ function saveGistConfig() {
   state.gistToken = document.getElementById('token-input').value.trim();
   state.gistId = document.getElementById('gist-id-input').value.trim() || DEFAULT_GIST_ID;
   saveLocal();
+  renderSyncStatus();
   showToast('설정 저장 완료');
 }
 
@@ -1137,7 +1174,7 @@ async function doSaveRecordsMonth(month) {
     });
     if (!res.ok) throw new Error(res.status);
     saveLocal();
-    updateSaveStatus(true);
+    updateSaveStatus(true, await serverTimeOf(res));
     renderGoals();
     renderHomeGoals();
     showToast('기록 저장 완료');
@@ -1540,6 +1577,7 @@ document.getElementById('gist-id-input').value = state.gistId || DEFAULT_GIST_ID
 renderDayChips();
 state.goalsData = state.goalsData || { updated_at: null, goals: [] };
 state.recordsByMonth = state.recordsByMonth || {};
+renderSyncStatus();
 renderAll();
 syncGist();
 fetchTodoWidget();
