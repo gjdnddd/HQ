@@ -626,11 +626,12 @@ async function fetchTodoWidget() {
 const DAYS_KO = ['일', '월', '화', '수', '목', '금', '토'];
 
 function freqLabel(r) {
+  let base = '';
   if (r.freq === 'daily') return '매일';
-  if (r.freq === 'weekly') return `매주 ${DAYS_KO[r.day_of_week]}`;
-  if (r.freq === 'biweekly') return `격주 ${DAYS_KO[r.day_of_week]}`;
-  if (r.freq === 'monthly') return r.day_of_month === 0 ? '매월 말일' : `매월 ${r.day_of_month}일`;
-  return '';
+  if (r.freq === 'weekly') base = `매주 ${DAYS_KO[r.day_of_week]}`;
+  else if (r.freq === 'biweekly') base = `격주 ${DAYS_KO[r.day_of_week]}`;
+  else if (r.freq === 'monthly') base = r.day_of_month === 0 ? '매월 말일' : `매월 ${r.day_of_month}일`;
+  return base + recBaseLabel(r, recToday());
 }
 
 // checklist_sets는 매일 리셋됨(자정 지나면 checked_today 초기화) — todo-app과 동일 로직
@@ -663,7 +664,70 @@ function lastOccurrence(dow) {
   d.setDate(d.getDate() - diff); d.setHours(0, 0, 0, 0); return d;
 }
 function getLastDayOfMonth(y, m) { return new Date(y, m + 1, 0).getDate(); }
+
+/* ── 시작일(start_date) 기반 회차 계산 ──
+   start_date(YYYY-MM-DD)가 있는 매주/격주/매월 항목은 시작일에서 7일/14일/매월 같은 '일' 단위로 회차를 센다.
+   가장 최근 회차(O) 이후에 완료·스킵한 적이 없으면 활성 — 그날을 놓쳐도 다음에 열 때 그 회차가 뜬다.
+   start_date가 없는 기존 항목은 shouldActivateRec의 옛 규칙(그날에만 활성)을 그대로 쓴다.
+   ⚠ 같은 로직이 HQ/index.html, 할일위젯 NotificationModel.kt(RecurringSchedule)에 복제돼 있다 — 수정 시 같이 고칠 것. */
+function recHasStart(r) {
+  return (r.freq === 'weekly' || r.freq === 'biweekly' || r.freq === 'monthly') && /^\d{4}-\d{2}-\d{2}$/.test(r.start_date || '');
+}
+function recToday() { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+function recParseYmd(s) { const p = s.split('-').map(Number); return new Date(p[0], p[1] - 1, p[2]); }
+function recMonthOcc(r, start, y, m) {
+  const last = new Date(y, m + 1, 0).getDate();
+  const dom = r.day_of_month === 0 ? last : Math.min(r.day_of_month || start.getDate(), last);
+  return new Date(y, m, dom);
+}
+/* 오늘(로컬 자정) 이하의 가장 최근 회차. 시작일 전이면 null */
+function recLatestOcc(r, today) {
+  const start = recParseYmd(r.start_date);
+  if (today < start) return null;
+  if (r.freq === 'monthly') {
+    let o = recMonthOcc(r, start, today.getFullYear(), today.getMonth());
+    if (o > today) o = recMonthOcc(r, start, today.getFullYear(), today.getMonth() - 1);
+    return o < start ? null : o;
+  }
+  const step = r.freq === 'biweekly' ? 14 : 7;
+  const days = Math.round((today - start) / 86400000);
+  return new Date(start.getFullYear(), start.getMonth(), start.getDate() + Math.floor(days / step) * step);
+}
+/* 오늘보다 뒤의 첫 회차 */
+function recNextOcc(r, today) {
+  const start = recParseYmd(r.start_date);
+  if (r.freq === 'monthly') {
+    const base = today < start ? start : today;
+    for (let k = 0; k < 3; k++) {
+      const o = recMonthOcc(r, start, base.getFullYear(), base.getMonth() + k);
+      if (o > today && o >= start) return o;
+    }
+    return null;
+  }
+  if (today < start) return start;
+  const cur = recLatestOcc(r, today);
+  const step = r.freq === 'biweekly' ? 14 : 7;
+  return new Date(cur.getFullYear(), cur.getMonth(), cur.getDate() + step);
+}
+function recShouldActivateByStart(r, today) {
+  const o = recLatestOcc(r, today);
+  if (!o) return false;
+  return !r.last_done_at || new Date(r.last_done_at) < o;
+}
+function recFmtDate(d, today) {
+  const mm = String(d.getMonth() + 1).padStart(2, '0'), dd = String(d.getDate()).padStart(2, '0');
+  return d.getFullYear() === today.getFullYear() ? `${mm}/${dd}` : `${String(d.getFullYear()).slice(2)}.${mm}.${dd}`;
+}
+/* 활성이면 "· 10/08 기준", 아니면 "· 다음 10/22". 시작일 없는 기존 항목은 '' */
+function recBaseLabel(r, today) {
+  if (!recHasStart(r)) return '';
+  if (recShouldActivateByStart(r, today)) return ` · ${recFmtDate(recLatestOcc(r, today), today)} 기준`;
+  const n = recNextOcc(r, today);
+  return n ? ` · 다음 ${recFmtDate(n, today)}` : '';
+}
+
 function shouldActivateRec(r) {
+  if (recHasStart(r)) return recShouldActivateByStart(r, recToday());
   const now = new Date();
   if (r.freq === 'daily') {
     if (!r.last_done_at) return true;
@@ -691,6 +755,16 @@ function shouldActivateRec(r) {
 function checkRecActivation() {
   const nowIso = new Date().toISOString();
   todoRaw.recurring.forEach(r => {
+    if (recHasStart(r)) {
+      /* 시작일 방식: 저장된 status를 믿지 않고 회차 기준으로 매번 재계산 */
+      if (shouldActivateRec(r)) {
+        if (r.status !== 'active') r.activated_at = nowIso;
+        r.status = 'active';
+      } else if (r.status === 'active') {
+        r.status = r.last_done_at ? 'done' : 'idle';
+      }
+      return;
+    }
     if (shouldActivateRec(r)) {
       if (r.status !== 'active') r.activated_at = nowIso;
       r.status = 'active';
